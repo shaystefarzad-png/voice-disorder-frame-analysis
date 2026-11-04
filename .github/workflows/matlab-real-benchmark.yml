@@ -1,0 +1,69 @@
+name: MATLAB corrected real-data timing
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - datasets/corrected-v2/**
+      - runCorrectedDataBenchmark.m
+      - ci/benchmarkOnly.m.fragment
+      - .github/workflows/matlab-real-benchmark.yml
+permissions:
+  contents: read
+concurrency:
+  group: corrected-real-data-benchmark
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      VOICE_FEATURE_DIR: ${{ github.workspace }}/datasets/corrected-v2
+      VOICE_RESULTS_DIR: ${{ github.workspace }}/real-data-benchmark-results
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify corrected input integrity
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('datasets/corrected-v2')
+          manifest=json.loads((root/'Input_Manifest.json').read_text())
+          assert len(manifest)==16
+          for item in manifest:
+              p=root/item['name']
+              assert p.stat().st_size==item['bytes']
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==item['sha256']
+          print('All 16 corrected input files verified.')
+          PY
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Measure fits on real TRAINING data; leave Test untouched
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runCorrectedDataBenchmark
+      - name: Publish timing summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import csv,os,pathlib
+          p=pathlib.Path(os.environ['VOICE_RESULTS_DIR'])/'Real_Data_Timing.csv'
+          if p.exists():
+              rows=list(csv.DictReader(p.open()))
+              text='## Training-only timing pilot\n\n'
+              text+='No test-set predictions or hypothesis tests were performed.\n\n'
+              text+='Completed fits: '+str(len(rows))+' / 48\n\n'
+              text+='| Classifier | Ranker | K | Fit seconds | Predict seconds |\n|---|---|---:|---:|---:|\n'
+              for r in rows:
+                  text+='| '+r['Classifier']+' | '+r['Ranker']+' | '+r['K']+' | '+r['FitSeconds']+' | '+r['PredictSeconds']+' |\n'
+              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write(text)
+              print(text)
+          PY
+      - name: Retain timing and error reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corrected-real-data-timing
+          path: real-data-benchmark-results/
+          if-no-files-found: warn
+          retention-days: 7

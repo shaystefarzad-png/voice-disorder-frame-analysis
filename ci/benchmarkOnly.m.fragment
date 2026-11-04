@@ -1,0 +1,50 @@
+function benchmarkOnly()
+cfg=configuration();cfg.InputDir=getenv('VOICE_FEATURE_DIR');cfg.OutputDir=getenv('VOICE_RESULTS_DIR');
+settings=load(fullfile(cfg.InputDir,'Extraction_Settings.mat'),'settings');
+assert(strcmp(settings.settings.ExtractorVersion,'YIN_HNR_LPC_corrected_v2_2026_11_04'));
+maxNumCompThreads(1);
+pool=gcp('nocreate');if isempty(pool),pool=parpool('local',2);end
+assert(pool.NumWorkers==2);
+names=featureNames();h=loadPair(cfg,"Healthy",0,names);p=loadPair(cfg,"Rekurrensparese",1,names);
+a=[h.A(h.IA,:);p.A(p.IA,:)];
+assert(isempty(intersect(unique(h.A.SubjectID),unique(p.A.SubjectID))));
+[ids,~,s]=unique(a.SubjectID,'sorted');y=accumarray(s,double(a.Label),[],@mean);
+[train,test]=holdoutSubjects(y,cfg.TestFraction,cfg.Seed);
+fold=zeros(numel(ids),1);fold(train)=groupFolds(y(train),cfg.MaxFolds,cfg.Seed+1);
+cohort=table(ids,y,train,test,fold,'VariableNames',{'SubjectID','Label','Train','Test','Fold'});
+writetable(cohort,fullfile(cfg.OutputDir,'Benchmark_SubjectSplit.xlsx'));
+d=makeData(double(a{:,cellstr(names.All)}),s,y,ids,names.All);
+training=find(train & fold~=1);validation=find(train & fold==1);
+assert(~any(test(training)) && ~any(test(validation)));
+rows=trainingRows(d,training,cfg);vr=find(ismember(d.S,validation));
+[fitIDs,calIDs]=calibrationSplit(training,d.Y,cfg);
+fitMask=ismember(d.S(rows),fitIDs);calMask=ismember(d.S(rows),calIDs);
+pre=fitPreprocessor(d.X(rows,:));z=applyPreprocessor(d.X(rows,:),pre);zv=applyPreprocessor(d.X(vr,:),pre);
+ps=fitPreprocessor(d.X(rows(fitMask),:));zs=applyPreprocessor(d.X(rows,:),ps);zsv=applyPreprocessor(d.X(vr,:),ps);
+ys=d.Y(d.S(rows));w=subjectWeights(d.S(rows),ys);timing=table();
+for r=1:numel(cfg.Rankers)
+    t=tic;[ord,~]=rankFeatures(z,d.S(rows),d.Y,cfg.Rankers(r),cfg,cfg.Seed+r);otherRankTime=toc(t);
+    t=tic;[so,~]=rankFeatures(zs(fitMask,:),d.S(rows(fitMask)),d.Y,cfg.Rankers(r),cfg,cfg.Seed+r);svmRankTime=toc(t);
+    for c=1:numel(cfg.Classifiers)
+        x=z;v=zv;order=ord;rankSeconds=otherRankTime;
+        if cfg.Classifiers(c)=="SVM",x=zs;v=zsv;order=so;rankSeconds=svmRankTime;end
+        for k=[1,22,43]
+            rng(cfg.Seed+100*r+1000*c+k,'twister');t=tic;
+            m=fitModel(x(:,order(1:k)),ys,w,cfg.Classifiers(c),fitMask,calMask,d.S(rows),cfg);
+            fitSeconds=toc(t);t=tic;prob=modelProbability(m,v(:,order(1:k)));predictSeconds=toc(t);
+            assert(numel(prob)==numel(vr) && all(isfinite(prob)));
+            q=table(cfg.Classifiers(c),cfg.Rankers(r),k,numel(training),numel(validation), ...
+                numel(rows),numel(vr),rankSeconds,fitSeconds,predictSeconds,true, ...
+                'VariableNames',{'Classifier','Ranker','K','TrainSubjects','ValidationSubjects', ...
+                'TrainFrames','ValidationFrames','RankSeconds','FitSeconds','PredictSeconds','TestUntouched'});
+            timing=[timing;q]; %#ok<AGROW>
+            writetable(timing,fullfile(cfg.OutputDir,'Real_Data_Timing.csv'));
+        end
+    end
+end
+assert(height(timing)==48);
+protocol=struct('Mode','TimingOnly','Disease','Rekurrensparese','QuickTest',false, ...
+    'AllTrainingFramesUsed',true,'CVFolds',10,'EvaluatedFold',1,'TestEvaluated',false, ...
+    'TestSubjects',sum(test),'TrainingSubjects',sum(train),'MATLAB',version,'OneComputeThread',true);
+save(fullfile(cfg.OutputDir,'Benchmark_Protocol.mat'),'protocol');
+end
