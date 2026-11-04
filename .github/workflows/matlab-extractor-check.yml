@@ -1,0 +1,27 @@
+name: MATLAB corrected extractor checks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - allfeatures_25_75_kimi_corrected.m
+      - .github/workflows/matlab-extractor-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  extractor:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Signal_Processing_Toolbox
+      - name: Validate YIN HNR LPC and both 43-feature kernels
+        uses: matlab-actions/run-command@v2
+        with:
+          command: allfeatures_25_75_kimi_corrected("selftest")
