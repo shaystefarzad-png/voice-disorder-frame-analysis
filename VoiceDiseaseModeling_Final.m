@@ -566,7 +566,7 @@ switch method
     case "ReliefF"
         k=min([cfg.ReliefNeighbors,sum(y==0)-1,sum(y==1)-1]);
         assert(k>=1,'Not enough subjects for ReliefF.');
-        [~,r]=relieff(u,y,k,'Prior','uniform'); score=r(:);
+        [~,r]=relieff(u,y,k,'Method','classification','Prior','uniform'); score=r(:);
     case "NCA"
         nc=fscnca(u,y,'Standardize',false, ...
             'Lambda',.01,'Solver','lbfgs','IterationLimit',cfg.NCAIterations,'Verbose',0);
