@@ -1,0 +1,382 @@
+name: Voice research full training and final evaluation
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ci/full-run-request.json
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: voice-full-research
+  cancel-in-progress: false
+
+env:
+  VOICE_FEATURE_DIR: ${{ github.workspace }}/datasets/corrected-v2
+  VOICE_OUTPUT_DIR: ${{ github.workspace }}/final-results
+  VOICE_PREP_DIR: ${{ github.workspace }}/prepared
+  VOICE_CI_SMOKE: '0'
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      main: ${{ steps.grid.outputs.main }}
+      nested_a: ${{ steps.grid.outputs.nested_a }}
+      nested_b: ${{ steps.grid.outputs.nested_b }}
+      nested_c: ${{ steps.grid.outputs.nested_c }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all corrected inputs
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,hashlib
+          root=pathlib.Path('datasets/corrected-v2')
+          files=json.loads((root/'Input_Manifest.json').read_text())
+          assert len(files)==16
+          for item in files:
+              data=(root/item['name']).read_bytes()
+              assert len(data)==item['bytes'] and hashlib.sha256(data).hexdigest()==item['sha256']
+          PY
+      - id: grid
+        run: python3 ci/plan_full_run.py
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify unchanged linear SVM objective before real training
+        uses: matlab-actions/run-command@v2
+        with:
+          command: verifyLinearSVM
+  stage_smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      VOICE_STAGE: smoke
+      VOICE_JOB: '{}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify staged execution with synthetic data only
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staged-smoke-evidence
+          path: stage-smoke-results/
+          retention-days: 30
+  prepare:
+    needs: [plan, validate, stage_smoke]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_STAGE: prepare
+      VOICE_JOB: '{"d":${{ matrix.d }}}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Freeze subject split and matching; do not predict Test
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+          overwrite: true
+          retention-days: 30
+  main_cv:
+    needs: [plan, validate, stage_smoke, prepare]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.main) }}
+    env:
+      VOICE_STAGE: folds
+      VOICE_JOB: ${{ toJSON(matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - name: Restore this job's completed folds on retry
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Fit two grouped CV folds with one pool of two workers
+        timeout-minutes: 315
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  nested_cv_a:
+    needs: [plan, validate, stage_smoke, prepare]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.nested_a) }}
+    env:
+      VOICE_STAGE: folds
+      VOICE_JOB: ${{ toJSON(matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - name: Restore this job's completed folds on retry
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Fit two grouped CV folds with one pool of two workers
+        timeout-minutes: 315
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  nested_cv_b:
+    needs: [plan, validate, stage_smoke, prepare]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.nested_b) }}
+    env:
+      VOICE_STAGE: folds
+      VOICE_JOB: ${{ toJSON(matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - name: Restore this job's completed folds on retry
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Fit two grouped CV folds with one pool of two workers
+        timeout-minutes: 315
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  nested_cv_c:
+    needs: [plan, validate, stage_smoke, prepare]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.nested_c) }}
+    env:
+      VOICE_STAGE: folds
+      VOICE_JOB: ${{ toJSON(matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - name: Restore this job's completed folds on retry
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Fit two grouped CV folds with one pool of two workers
+        timeout-minutes: 315
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.artifact }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  select_models:
+    needs: [prepare, main_cv, nested_cv_a, nested_cv_b, nested_cv_c]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_STAGE: select
+      VOICE_JOB: '{"d":${{ matrix.d }}}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cv-*-d${{ matrix.d }}-*
+          merge-multiple: true
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Freeze every model and voting choice using training only
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selected-d${{ matrix.d }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  final_test:
+    needs: [prepare, select_models]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_STAGE: evaluate
+      VOICE_JOB: '{"d":${{ matrix.d }}}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d${{ matrix.d }}
+          path: prepared/d${{ matrix.d }}/
+      - uses: actions/download-artifact@v4
+        with:
+          name: selected-d${{ matrix.d }}
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Evaluate frozen models on subject-level Test exactly after all training succeeds
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluated-d${{ matrix.d }}
+          path: final-results/
+          overwrite: true
+          retention-days: 30
+  final_statistics:
+    needs: [final_test]
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      VOICE_STAGE: aggregate
+      VOICE_JOB: '{}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: evaluated-d*
+          merge-multiple: true
+          path: final-results/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Paired bootstrap, paired permutation and Holm; compile all disease results
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalStage
+      - name: Package user-facing results with source provenance
+        run: python3 ci/package_final_results.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-research-results
+          path: published-results/
+          retention-days: 30
+      - name: Publish completed research reports
+        run: |
+          git fetch origin main --quiet
+          git merge --ff-only origin/main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mkdir -p results
+          cp -r published-results "results/full-run-$GITHUB_RUN_ID"
+          git add "results/full-run-$GITHUB_RUN_ID"
+          git commit -m "Publish completed frozen-protocol research results for run $GITHUB_RUN_ID"
+          git push origin HEAD:main
