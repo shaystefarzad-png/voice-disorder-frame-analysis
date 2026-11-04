@@ -1,0 +1,40 @@
+name: MATLAB synthetic integration
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - VoiceDiseaseModeling_Final.m
+      - runSyntheticWorkflow.m
+      - .github/workflows/matlab-integration.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: matlab-synthetic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Run actual modeling pipeline on synthetic Excel workbooks
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runSyntheticWorkflow
+      - name: Retain test outputs and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-integration-results
+          path: synthetic-test-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
