@@ -1,0 +1,29 @@
+name: Export completed MATLAB timing report
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/export-benchmark-report.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: corrected-real-data-timing
+          run-id: 41839365355
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: analysis/benchmark-41839365355
+      - name: Persist completed timing evidence
+        run: |
+          test -f analysis/benchmark-41839365355/Real_Data_Timing.csv
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add analysis/benchmark-41839365355
+          git commit -m 'Save completed real-data training timing evidence' || exit 0
+          git push origin HEAD:main
