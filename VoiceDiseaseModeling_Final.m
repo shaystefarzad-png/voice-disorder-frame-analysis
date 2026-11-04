@@ -600,8 +600,20 @@ switch kind
                 'Regularization','ridge','Solver','dual','Lambda',1/sum(fitMask), ...
                 'IterationLimit',1e9,'PassLimit',1000,'DeltaGradientTolerance',1e-3, ...
                 'ClassNames',[0;1],'Weights',wf);
-            assert(all(fitInfo.TerminationCode>0),'Linear SVM did not converge.');
+            useFallback=~all(fitInfo.TerminationCode>0) || ...
+                (isfield(cfg,'ForceSVMFallback') && cfg.ForceSVMFallback);
             if isfield(fitInfo,'Alpha'),fitInfo=rmfield(fitInfo,'Alpha');end
+            fitInfo.Backend='linear_dual';
+            if useFallback
+                % Same linear C=1 problem, solved by the verified reference
+                % solver. Never accept the nonconverged fast model.
+                svm=fitcsvm(x(fitMask,:),yf,'KernelFunction','linear', ...
+                    'BoxConstraint',1,'Standardize',false,'ClassNames',[0;1], ...
+                    'Prior','uniform','Weights',w(fitMask),'Solver','SMO');
+                assert(svm.ConvergenceInfo.Converged,'Reference SVM did not converge.');
+                fitInfo.Backend='SMO_converged_fallback';
+                fitInfo.ReferenceConvergence=svm.ConvergenceInfo;
+            end
             model.SolverInfo=fitInfo;
         else
             svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction','linear', ...
