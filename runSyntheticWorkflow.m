@@ -31,6 +31,21 @@ qdir=fullfile(output,'QUICK_TEST_NOT_FOR_INFERENCE');
 book=fullfile(qdir,'All_Diseases_Summary.xlsx');
 assert(isfile(book),'The main pipeline did not produce the summary workbook.');
 status=readtable(book,'Sheet','RunStatus','TextType','string');
+if ~all(status.Status=="Completed")
+    disp(status); fprintf('%s\n',log);
+    reports=dir(fullfile(qdir,'**','LastFailure.mat'));
+    for j=1:numel(reports)
+        evidence=load(fullfile(reports(j).folder,reports(j).name),'failure');
+        report=string(evidence.failure.Report);
+        fprintf(2,'%s\n',report);
+        escaped=replace(replace(replace(report,"%","%25"),char(13),"%0D"),char(10),"%0A");
+        fprintf(2,'::error title=Modeling pipeline root cause::%s\n',escaped);
+        summaryFile=getenv('GITHUB_STEP_SUMMARY');
+        if ~isempty(summaryFile)
+            writeText(summaryFile,"## Modeling failure details"+newline+"```text"+newline+report+newline+"```"+newline);
+        end
+    end
+end
 assert(all(status.Status=="Completed"), ...
     'Pipeline reported failure. Inspect RunStatus and LastFailure.mat artifacts.');
 summary=readtable(book,'Sheet','Summary','TextType','string');
