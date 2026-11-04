@@ -1,4 +1,5 @@
 function verifyLinearSVM
+try
 % Independent objective check before any real-data model selection or Test.
 rng(1405,'twister');n=600;p=8;X=randn(n,p);Y=[zeros(200,1);ones(400,1)];
 X(:,1:3)=X(:,1:3)+.7*Y;w=1+mod((1:n)',4);
@@ -16,4 +17,11 @@ assert(all(isfinite(fast.Beta)));
 disp(struct('SMOObjective',a,'DualObjective',b,'TrainingDecisionAgreement',mean(predict(reference,X)==predict(fast,X))));
 disp(info);
 fprintf('LINEAR_SVM_OBJECTIVE_CHECK_PASSED\n');
+catch err
+    report=string(getReport(err,'extended','hyperlinks','off'));
+    report=replace(replace(replace(report,"%","%25"),char(13),"%0D"),char(10),"%0A");
+    fprintf(2,'::error title=Linear SVM validation failure::%s\n',report);
+    rethrow(err);
+end
+
 end
