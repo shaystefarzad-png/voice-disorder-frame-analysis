@@ -82,7 +82,7 @@ end
 end
 
 function cfg=configuration()
-cfg.InputDir = 'D:\SVD\meta\svd_wav\Features';
+cfg.InputDir = 'D:\SVD\meta\svd_wav\Features_Corrected';
 cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final';
 % Edit disease membership ONLY here. Missing pairs are recorded, not invented.
 cfg.Diseases = ["Rekurrensparese","Hyperfunktionelle","Laryngitis", ...
@@ -95,11 +95,12 @@ cfg.Rankers=["Ttest","CohenD","ReliefF","NCA"];
 % different, resource-limited experiment and enter the checkpoint signature.
 cfg.MaxTrainFramesPerSubject=Inf;
 cfg.NumTrees=40; cfg.MinLeafSize=5; cfg.KNNNeighbors=5;
+cfg.SVMBackend='linear_dual'; % same linear hinge-loss model, scalable solver
 cfg.NCAIterations=60; cfg.ReliefNeighbors=10;
 cfg.CalibrationFraction=.20; % independent SUBJECT calibration for SVM
 cfg.Bootstrap=5000; cfg.Permutations=10000; cfg.Alpha=.05;
 cfg.TimeToleranceSec=.0051; cfg.EqualityTolerance=1e-10;
-cfg.ProtocolVersion='independent-2026-11-04-v1';
+cfg.ProtocolVersion='independent-2026-11-04-v3-linear-dual';
 end
 
 function n=featureNames()
@@ -586,9 +587,19 @@ switch kind
         % SVM raw margins are NOT probabilities. The margin model uses only
         % fit subjects; a Platt sigmoid uses separate calibration subjects.
         % Never call fitPosterior's frame-random cross-validation.
-        svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction','linear', ...
-            'BoxConstraint',1,'Standardize',false,'ClassNames',[0;1], ...
-            'Prior','uniform','Weights',w(fitMask),'Solver','SMO');
+        if strcmp(cfg.SVMBackend,'linear_dual')
+            % fitclinear minimizes weighted mean hinge loss + lambda*||b||^2/2.
+            % lambda=1/(n*C) matches fitcsvm linear soft-margin C=1.
+            [svm,fitInfo]=fitclinear(x(fitMask,:),y(fitMask),'Learner','svm', ...
+                'Regularization','ridge','Solver','dual','Lambda',1/sum(fitMask), ...
+                'IterationLimit',10000,'ClassNames',[0;1], ...
+                'Prior','uniform','Weights',w(fitMask));
+            model.SolverInfo=fitInfo;
+        else
+            svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction','linear', ...
+                'BoxConstraint',1,'Standardize',false,'ClassNames',[0;1], ...
+                'Prior','uniform','Weights',w(fitMask),'Solver','SMO');
+        end
         [~,scores]=predict(svm,x(calMask,:)); raw=scores(:,svm.ClassNames==1);
         wc=subjectWeights(subject(calMask),y(calMask));
         model.Core=svm; model.Calibration=fitPlatt(raw,y(calMask),wc);

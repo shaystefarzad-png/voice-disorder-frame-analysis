@@ -1,0 +1,28 @@
+name: Validate scalable linear SVM and full pipeline
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - verifyLinearSVM.m
+      - .github/workflows/linear-svm-validation.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: verifyLinearSVM; runSyntheticWorkflow
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linear-svm-validation
+          path: synthetic-test-artifacts/
+          retention-days: 7
