@@ -11,7 +11,10 @@ nw=w;for c=0:1,nw(Y==c)=.5*w(Y==c)/sum(w(Y==c));end
 margin=@(m)X*m.Beta+m.Bias;
 objective=@(m).5*sum(m.Beta.^2)+n*sum(nw.*max(0,1-(2*Y-1).*margin(m)));
 a=objective(reference);b=objective(fast);
-assert(abs(a-b)/max(1,a)<.01,'Linear SVM objective mismatch.');
+assert(abs(a-b)/max(1,a)<.01,sprintf( ...
+    'Linear SVM objective mismatch: ref=%.12g fast=%.12g sumBox=%.12g minBox=%.12g maxBox=%.12g betaRef=%.12g betaFast=%.12g biasRef=%.12g biasFast=%.12g.', ...
+    a,b,sum(reference.BoxConstraints),min(reference.BoxConstraints),max(reference.BoxConstraints), ...
+    norm(reference.Beta),norm(fast.Beta),reference.Bias,fast.Bias));
 assert(mean(predict(reference,X)~=predict(fast,X))<.02,'Unexpected decision mismatch.');
 assert(all(isfinite(fast.Beta)));
 disp(struct('SMOObjective',a,'DualObjective',b,'TrainingDecisionAgreement',mean(predict(reference,X)==predict(fast,X))));
