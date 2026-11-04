@@ -1,0 +1,96 @@
+function VoiceDiseaseModeling_Final
+% Independent implementation for MATLAB R2023b. No previous modeling code used.
+% Run: VoiceDiseaseModeling_Final
+% Requires Statistics and Machine Learning Toolbox; Parallel Computing Toolbox
+% only when cfg.UseParallel=true. See deliverables/Implementation_Notes_FA.md.
+% All reported metrics use SUBJECTS. CV estimates used for selection are not
+% unbiased performance estimates; only the untouched test supports inference.
+
+cfg = configuration();
+rng(cfg.Seed,'twister');
+assert(license('test','Statistics_Toolbox'), 'Statistics Toolbox is required.');
+if cfg.QuickTest
+    cfg.OutputDir = fullfile(cfg.OutputDir,'QUICK_TEST_NOT_FOR_INFERENCE');
+    cfg.MaxFolds = 2; cfg.NumTrees = 8; cfg.NCAIterations = 10;
+    cfg.MaxTrainFramesPerSubject = 9; cfg.Bootstrap = 100; cfg.Permutations = 100;
+end
+if ~isfolder(cfg.OutputDir), mkdir(cfg.OutputDir); end
+if cfg.UseParallel
+    assert(license('test','Distrib_Computing_Toolbox'), ...
+        'Parallel Computing Toolbox required, or set UseParallel=false.');
+    pool = gcp('nocreate');
+    if isempty(pool)
+        parpool('local',2);
+    else
+        assert(pool.NumWorkers==2,'Use an existing pool with exactly two workers.');
+    end
+end
+names = featureNames();
+writeRunProtocol(cfg,names);
+healthy = loadPair(cfg,"Healthy",0,names);
+results = cell(numel(cfg.Diseases),1);
+runlog = table('Size',[0 3],'VariableTypes',{'string','string','string'}, ...
+    'VariableNames',{'Disease','Status','Detail'});
+for d = 1:numel(cfg.Diseases)
+    disease = cfg.Diseases(d); started = tic;
+    diseaseDir = fullfile(cfg.OutputDir,safeName(disease));
+    if ~isfolder(diseaseDir), mkdir(diseaseDir); end
+    files = [featurePath(cfg,25,"Healthy"),featurePath(cfg,75,"Healthy"), ...
+        featurePath(cfg,25,disease),featurePath(cfg,75,disease)];
+    if ~all(isfile(files))
+        runlog(end+1,:) = {disease,"MissingInput",strjoin(files(~isfile(files))," | ")}; %#ok<AGROW>
+        atomicTable(runlog,fullfile(cfg.OutputDir,'Run_Status.xlsx'),'Status');
+        continue
+    end
+    sig = runSignature(cfg,files);
+    cacheDir = fullfile(diseaseDir,['cache_' char(sig)]);
+    if ~isfolder(cacheDir), mkdir(cacheDir); end
+    completeFile = fullfile(cacheDir,'COMPLETE.mat');
+    try
+        if cfg.Resume && isfile(completeFile)
+            z=load(completeFile,'result'); result=z.result;
+            exportDisease(result,diseaseDir);
+        else
+            patient = loadPair(cfg,disease,1,names);
+            result = runDisease(cfg,healthy,patient,disease,names,cacheDir);
+            result.Signature=sig; result.Seconds=toc(started);
+            exportDisease(result,diseaseDir);
+            atomicSave(completeFile,'result',result);
+        end
+        results{d}=result;
+        runlog(end+1,:)={disease,"Completed",sig}; %#ok<AGROW>
+        exportSummary(results,cfg,runlog);
+        statisticalReport(results,cfg);
+        printResult(result,toc(started));
+    catch err
+        % Completed folds are individually persisted even if a worker dies.
+        failure=struct('Disease',disease,'Identifier',err.identifier, ...
+            'Report',getReport(err,'extended','hyperlinks','off'));
+        atomicSave(fullfile(diseaseDir,'LastFailure.mat'),'failure',failure);
+        runlog(end+1,:)={disease,"Failed",string(err.message)}; %#ok<AGROW>
+        atomicTable(runlog,fullfile(cfg.OutputDir,'Run_Status.xlsx'),'Status');
+    end
+end
+if ~any(~cellfun(@isempty,results))
+    exportSummary(results,cfg,runlog);
+else
+    master=fullfile(cfg.OutputDir,'All_Diseases_Summary.xlsx');
+    temporary=[tempname(cfg.OutputDir) '.xlsx']; copyfile(master,temporary);
+    writetable(runlog,temporary,'Sheet','RunStatus','WriteMode','overwritesheet');
+    movefile(temporary,master,'f');
+end
+end
+
+function cfg=configuration()
+cfg.InputDir = 'D:\SVD\meta\svd_wav\Features';
+cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final';
+% Edit disease membership ONLY here. Missing pairs are recorded, not invented.
+cfg.Diseases = ["Rekurrensparese","Hyperfunktionelle","Laryngitis", ...
+    "Reinke Ödem","Spasmodische Dysphonie","Stimmlippenpolyp"];
+cfg.Seed=1405; cfg.UseParallel=true; cfg.QuickTest=false; cfg.Resume=true;
+cfg.TestFraction=.20; cfg.MaxFolds=10;
+cfg.Classifiers=["SVM","KNN","RandomForest","NaiveBayes"];
+cfg.Rankers=["Ttest","CohenD","ReliefF","NCA"];
+% Full mode uses every training frame. Finite values are an explicitly
+% different, resource-limited experiment and enter the checkpoint signature.
+cfg.MaxTrainFramesPerSubject=Inf;
