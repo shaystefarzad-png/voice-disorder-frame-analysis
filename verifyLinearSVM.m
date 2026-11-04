@@ -7,7 +7,10 @@ reference=fitcsvm(X,Y,'KernelFunction','linear','BoxConstraint',1,'Standardize',
     'ClassNames',[0;1],'Prior','uniform','Weights',w,'Solver','SMO');
 nw=w;for c=0:1,nw(Y==c)=.5*w(Y==c)/sum(w(Y==c));end
 [fast,info]=fitclinear(X,Y,'Learner','svm','Regularization','ridge','Solver','dual', ...
-    'Lambda',1/n,'IterationLimit',100000,'ClassNames',[0;1],'Weights',nw);
+    'Lambda',1/n,'IterationLimit',1e9,'PassLimit',1000,'DeltaGradientTolerance',1e-3, ...
+    'ClassNames',[0;1],'Weights',nw);
+assert(all(info.TerminationCode>0),'Scalable SVM solver has not converged.');
+if isfield(info,'Alpha'),info=rmfield(info,'Alpha');end
 nw=w;for c=0:1,nw(Y==c)=.5*w(Y==c)/sum(w(Y==c));end
 margin=@(m)X*m.Beta+m.Bias;
 objective=@(m).5*sum(m.Beta.^2)+n*sum(nw.*max(0,1-(2*Y-1).*margin(m)));

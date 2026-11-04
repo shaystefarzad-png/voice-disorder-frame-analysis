@@ -190,6 +190,16 @@ ciPool();prep=ciLoad(cfg,d);cache=ciCache(cfg,prep);
 z=load(fullfile(cache,'CI_TRAINING_STATE.mat'),'state');state=z.state;
 assert(~state.TestEvaluated && state.Selection.FrozenBeforeTest);
 assert(strcmp(state.SourceHash,prep.SourceHash) && strcmp(state.Signature,prep.Signature));
+folder=fullfile(cfg.OutputDir,safeName(prep.Disease));
+completed=fullfile(folder,'FINAL_RESULT.mat');
+if isfile(completed)
+    done=load(completed,'result');
+    assert(strcmp(done.result.Signature,prep.Signature));
+    assert(isequaln(done.result.Selection,state.Selection));
+    exportDisease(done.result,folder);
+    fprintf('REUSED_COMPLETED_FINAL_EVALUATION d=%d; NO NEW TEST PREDICTIONS\n',d);
+    return
+end
 started=tic;
 result=runDisease(cfg,prep.Healthy,prep.Patient,prep.Disease,prep.Names,cache);
 assert(isequaln(result.Selection,state.Selection),'Frozen training selection changed.');
