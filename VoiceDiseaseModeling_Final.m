@@ -403,7 +403,8 @@ if ~all(valid)
     failures=table();
     for k=1:kfold, failures=[failures;parts{k}.Failures]; end %#ok<AGROW>
     atomicTable(failures,fullfile(cache,'REQUIRED_CANDIDATE_FAILURES.xlsx'),'Failures');
-    error('Required candidates failed: inspect %s; no complete inference was produced.',cache);
+    reasons=unique(string(failures.Error),'stable');
+    error('Required candidates failed in %s. Causes: %s',cache,strjoin(reasons(1:min(8,numel(reasons)))," | "));
 end
 best=0;
 for j=find(valid)
@@ -1053,7 +1054,10 @@ tmp=[tempname(folder) '.xlsx']; writetable(t,tmp,'Sheet',sheet); movefile(tmp,fi
 end
 
 function s=safeName(value)
-s=char(regexprep(string(value),'[^\p{L}\p{N}_-]','_'));
+s=char(regexprep(string(value),'[^A-Za-z0-9_-]','_'));
+if ~strcmp(s,char(value))
+    suffix=hashBytes(unicode2native(char(value),'UTF-8')); s=[s '_' suffix(1:8)];
+end
 end
 
 function sig=runSignature(cfg,files)
