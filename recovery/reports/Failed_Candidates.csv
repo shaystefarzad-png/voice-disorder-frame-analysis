@@ -1,0 +1,3 @@
+Fold,Classifier,Ranker,K,Error,Checkpoint
+1,SVM,Ttest,31,Reference SVM did not converge.,/home/runner/work/voice-disorder-frame-analysis/voice-disorder-frame-analysis/recovery/failed-frequency-fold/Rekurrensparese/cache_093feaef2f0d6225e154fc6dd13b0909b75691fcbeb0aab6f0cdc9293c206350/Voting/Outer_05_Frequency/Fold_01.mat
+1,SVM,CohenD,31,Reference SVM did not converge.,/home/runner/work/voice-disorder-frame-analysis/voice-disorder-frame-analysis/recovery/failed-frequency-fold/Rekurrensparese/cache_093feaef2f0d6225e154fc6dd13b0909b75691fcbeb0aab6f0cdc9293c206350/Voting/Outer_05_Frequency/Fold_01.mat
