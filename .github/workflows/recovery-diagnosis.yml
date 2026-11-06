@@ -1,0 +1,56 @@
+name: Stop failed run and diagnose preserved checkpoints
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/recovery-diagnosis.yml
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: voice-full-research
+  cancel-in-progress: true
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cancel only the known failed run; preserve all artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh api repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/41904333768 --jq .status)
+          if [ "$state" != completed ]; then
+            gh api -X POST repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/41904333768/cancel || true
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: cv-inner-d1-o5-s5-b1
+          run-id: 41904333768
+          github-token: ${{ github.token }}
+          path: recovery/failed-frequency-fold
+      - uses: actions/download-artifact@v4
+        with:
+          name: cv-main-d1-s4-b1
+          run-id: 41904333768
+          github-token: ${{ github.token }}
+          path: recovery/time-fold
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox
+      - name: Export candidate failures and completion counts; no training or Test
+        uses: matlab-actions/run-command@v2
+        with:
+          command: diagnoseSavedFolds
+      - name: Preserve diagnostic report
+        if: always()
+        run: |
+          if [ -d recovery/reports ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add recovery/reports
+            git commit -m 'Preserve exact failed-candidate diagnostics without rerunning models' || exit 0
+            git push origin HEAD:main
+          fi
