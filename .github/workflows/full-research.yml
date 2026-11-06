@@ -53,7 +53,7 @@ jobs:
       - name: Verify unchanged linear SVM objective before real training
         uses: matlab-actions/run-command@v2
         with:
-          command: verifyLinearSVM; verifyProductionSVMFallback
+          command: verifyCertifiedSVM
   stage_smoke:
     runs-on: ubuntu-22.04
     timeout-minutes: 40

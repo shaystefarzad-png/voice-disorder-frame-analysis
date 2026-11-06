@@ -434,7 +434,8 @@ t=table(reshape(cfg.Classifiers(C(:)),[],1),reshape(cfg.Rankers(R(:)),[],1),K(:)
     'VariableNames',{'Classifier','Ranker','K'});
 end
 
-function part=evaluateFold(d,subjects,fold,k,candidates,cfg,seed)
+function part=evaluateFold(d,subjects,fold,k,candidates,cfg,seed,checkpoint)
+if nargin<8,checkpoint="";end
 training=subjects(fold~=k); validation=subjects(fold==k);
 assert(isempty(intersect(training,validation)) && numel(unique(subjects))==numel(subjects));
 % The same independent calibration partition is used by all SVM candidates.
@@ -451,6 +452,11 @@ fitMask=ismember(d.S(trainRows),fitIDs); calMask=ismember(d.S(trainRows),calIDs)
 part.BA=NaN(1,height(candidates)); part.Sensitivity=part.BA;
 part.Failures=table('Size',[0 5],'VariableTypes',{'double','string','string','double','string'}, ...
     'VariableNames',{'Fold','Classifier','Ranker','K','Error'});
+if strlength(checkpoint)>0 && isfile(checkpoint)
+    saved=load(checkpoint,'part');
+    assert(numel(saved.part.BA)==height(candidates),'Partial candidate grid mismatch.');
+    part.BA=saved.part.BA;part.Sensitivity=saved.part.Sensitivity;
+end
 part.Rankings=table();
 for r=1:numel(cfg.Rankers)
     ranker=cfg.Rankers(r);
@@ -482,7 +488,7 @@ for r=1:numel(cfg.Rankers)
         end
         for n=1:numel(activeOrder)
             ci=find(candidates.Classifier==cfg.Classifiers(c)&candidates.Ranker==ranker&candidates.K==n);
-            if isempty(ci), continue; end
+            if isempty(ci) || isfinite(part.BA(ci)), continue; end
             cols=activeOrder(1:n);
             try
                 rng(seed+100*r+1000*c+n,'twister');
@@ -496,6 +502,7 @@ for r=1:numel(cfg.Rankers)
                 part.Failures(end+1,:)={k,cfg.Classifiers(c),ranker,n,string(err.message)};
             end
         end
+        if strlength(checkpoint)>0,atomicSave(checkpoint,'part',part);end
     end
 end
 end

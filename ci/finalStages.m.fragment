@@ -107,7 +107,7 @@ parfor t=1:numel(tasks)
         end
     end
     if isempty(part)
-        part=evaluateFold(data,ids,fold,k,candidates,cfg,seed+k);
+        part=evaluateFold(data,ids,fold,k,candidates,cfg,seed+k,string(file)+".partial");
         tr=ids(fold~=k);va=ids(fold==k);
         assert(~any(cohort.Test([tr;va])) && isempty(intersect(tr,va)));
         assert(isempty(intersect([tr;va],outerReserved)));
