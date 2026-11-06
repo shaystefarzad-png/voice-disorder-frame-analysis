@@ -1,0 +1,28 @@
+function certifiedChecks
+rng(1405,'twister');results=table();
+for test=1:4
+    n=600;p=8;X=randn(n,p);y=[zeros(200,1);ones(400,1)];X=X+.3*y;
+    if test==2,X(:,2:end)=X(:,1)+1e-4*X(:,2:end);end
+    if test==3,X(:)=0;end
+    if test==4,X=round(X);end
+    w=1+mod((1:n)',4);for c=0:1,w(y==c)=.5*w(y==c)/sum(w(y==c));end
+    [m,info,a]=fitCertifiedLinearSVM(X,y,w,1/n);
+    signed=2*y-1;primal=.5/n*sum(m.Beta.^2)+sum(w.*max(0,1-signed.*(X*m.Beta+m.Bias)));
+    q=X'*(signed.*a);dual=sum(a)-.5*n*sum(q.^2);
+    assert(all(a>=-1e-14 & a<=w+1e-14) && abs(signed'*a)<1e-10);
+    assert(primal-dual>=-1e-8 && primal-dual<=1e-5);
+    assert(abs(primal-info.PrimalObjective)<1e-10 && all(isfinite(m.Beta)));
+    if test==1
+        ref=fitcsvm(X,y,'KernelFunction','linear','BoxConstraint',1,'Standardize',false, ...
+            'ClassNames',[0;1],'Prior','uniform','Weights',w,'Solver','SMO');
+        assert(ref.ConvergenceInfo.Converged,'Independent reference failed to converge.');
+        refP=.5/n*sum(ref.Beta.^2)+sum(w.*max(0,1-signed.*(X*ref.Beta+ref.Bias)));
+        assert(abs(primal-refP)<1e-3,'Reference hinge objective mismatch.');
+    end
+    if test==3,assert(abs(primal-1)<1e-10);end
+    results=[results;table(test,primal,dual,info.PrimalDualGap,info.Seconds)]; %#ok<AGROW>
+end
+out='synthetic-test-artifacts';if ~isfolder(out),mkdir(out);end
+writetable(results,fullfile(out,'Certified_SVM_Checks.csv'));
+disp(results);fprintf('CERTIFIED_SVM_CHECKS_PASSED; NO REAL TEST DATA USED\n');
+end

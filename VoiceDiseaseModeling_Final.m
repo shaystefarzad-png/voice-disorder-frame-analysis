@@ -95,12 +95,12 @@ cfg.Rankers=["Ttest","CohenD","ReliefF","NCA"];
 % different, resource-limited experiment and enter the checkpoint signature.
 cfg.MaxTrainFramesPerSubject=Inf;
 cfg.NumTrees=40; cfg.MinLeafSize=5; cfg.KNNNeighbors=5;
-cfg.SVMBackend='linear_dual'; % same linear hinge-loss model, scalable solver
+cfg.SVMBackend='certified_primal'; % same C=1 hinge objective, explicit dual-gap certificate
 cfg.NCAIterations=60; cfg.ReliefNeighbors=10;
 cfg.CalibrationFraction=.20; % independent SUBJECT calibration for SVM
 cfg.Bootstrap=5000; cfg.Permutations=10000; cfg.Alpha=.05;
 cfg.TimeToleranceSec=.0051; cfg.EqualityTolerance=1e-10;
-cfg.ProtocolVersion='independent-2026-11-04-v3-linear-dual';
+cfg.ProtocolVersion='independent-2026-11-06-v4-certified-hinge';
 end
 
 function n=featureNames()
@@ -591,7 +591,12 @@ switch kind
         % SVM raw margins are NOT probabilities. The margin model uses only
         % fit subjects; a Platt sigmoid uses separate calibration subjects.
         % Never call fitPosterior's frame-random cross-validation.
-        if strcmp(cfg.SVMBackend,'linear_dual')
+        if strcmp(cfg.SVMBackend,'certified_primal')
+            wf=w(fitMask);yf=y(fitMask);
+            for cls=0:1,wf(yf==cls)=.5*wf(yf==cls)/sum(wf(yf==cls));end
+            [svm,fitInfo]=fitCertifiedLinearSVM(x(fitMask,:),yf,wf,1/sum(fitMask));
+            model.SolverInfo=fitInfo;
+        elseif strcmp(cfg.SVMBackend,'linear_dual')
             % fitclinear minimizes weighted mean hinge loss + lambda*||b||^2/2.
             % lambda=1/(n*C) matches fitcsvm linear soft-margin C=1.
             wf=w(fitMask);yf=y(fitMask);
@@ -620,7 +625,11 @@ switch kind
                 'BoxConstraint',1,'Standardize',false,'ClassNames',[0;1], ...
                 'Prior','uniform','Weights',w(fitMask),'Solver','SMO');
         end
-        [~,scores]=predict(svm,x(calMask,:)); raw=scores(:,svm.ClassNames==1);
+        if isstruct(svm) && isfield(svm,'Type') && strcmp(svm.Type,'certified_linear_svm')
+            raw=x(calMask,:)*svm.Beta+svm.Bias;
+        else
+            [~,scores]=predict(svm,x(calMask,:));raw=scores(:,svm.ClassNames==1);
+        end
         wc=subjectWeights(subject(calMask),y(calMask));
         model.Core=svm; model.Calibration=fitPlatt(raw,y(calMask),wc);
     case "KNN"
@@ -677,7 +686,11 @@ end
 function p=modelProbability(model,x)
 switch model.Kind
     case "SVM"
-        [~,sc]=predict(model.Core,x); margin=sc(:,model.Core.ClassNames==1);
+        if isstruct(model.Core) && isfield(model.Core,'Type') && strcmp(model.Core.Type,'certified_linear_svm')
+            margin=x*model.Core.Beta+model.Core.Bias;
+        else
+            [~,sc]=predict(model.Core,x);margin=sc(:,model.Core.ClassNames==1);
+        end
         b=model.Calibration; p=sigmoid([ones(size(margin)),(margin-b.Mu)/b.Scale]*b.Beta);
     case "NaiveBayes"
         logp=zeros(size(x,1),2);
@@ -1133,4 +1146,68 @@ workload=table(base,nested,2*cfg.MaxFolds+5,base+nested+2*cfg.MaxFolds+5, ...
     'VariableNames',{'MainCVFitsPerDisease','NestedVotingCVFitsPerDisease', ...
     'AdditionalFitsPerDisease','UpperScheduledFitsPerDisease','UpperScheduledFitsAllDiseases'});
 atomicTable(workload,fullfile(cfg.OutputDir,'Computational_Workload.xlsx'),'Workload');
+end
+
+function [svm,info,alpha]=fitCertifiedLinearSVM(X,y,w,lambda)
+% Same weighted linear hinge-loss objective as C=1 fitcsvm when lambda=1/n.
+% Accept only an independently feasible hinge-loss dual lower bound.
+started=tic;X=double(X);y=double(y(:));w=double(w(:));w=w/sum(w);
+assert(all(isfinite(X),'all') && all(ismember(y,[0 1])) && all(w>0));
+assert(lambda>0 && size(X,1)==numel(y));
+[n,p]=size(X);signed=2*y-1;Z=[X,ones(n,1)];theta=zeros(p+1,1);
+reg=[lambda*ones(p,1);0];total=0;tol=1e-5;converged=false;
+for delta=[.1,.01,.001,.0001,.00001,.000001,.0000001]
+    for iteration=1:120
+        total=total+1;margin=signed.*(Z*theta);r=1-margin;
+        slope=min(1,max(0,r/delta));a=w.*slope;
+        g=reg.*theta-Z'*(signed.*a);
+        if norm(g,Inf)<1e-9,break;end
+        active=r>0 & r<delta;V=Z(active,:);
+        H=V'*(V.*(w(active)/delta))+diag(reg)+1e-9*eye(p+1);
+        scale=1./sqrt(max(diag(H),1e-12));Hs=(H.*scale).*scale';
+        step=scale.*(Hs\(scale.*g));
+        if norm(step)>100,step=step*(100/norm(step));end
+        descent=g'*step;
+        if ~isfinite(descent) || descent<=0,step=g;descent=g'*g;end
+        old=svmSmoothObjective(Z,signed,w,lambda,theta,delta);fraction=1;accepted=false;
+        for search=1:55
+            proposal=theta-fraction*step;
+            if svmSmoothObjective(Z,signed,w,lambda,proposal,delta)<=old-1e-4*fraction*descent
+                accepted=true;break
+            end
+            fraction=fraction/2;
+        end
+        if ~accepted,break;end
+        theta=proposal;
+    end
+    [primal,dual,alpha,feasibility]=svmHingeCertificate(X,signed,w,lambda,theta,delta);
+    gap=primal-dual;
+    assert(gap>=-1e-8 && feasibility<1e-10,'Invalid SVM dual certificate.');
+    if gap<=tol,converged=true;break;end
+end
+svm=struct('Type','certified_linear_svm','Beta',theta(1:p),'Bias',theta(end),'ClassNames',[0;1]);
+info=struct('Backend','certified_primal_hinge','Converged',converged, ...
+    'Lambda',lambda,'PrimalObjective',primal,'DualObjective',dual, ...
+    'PrimalDualGap',max(0,gap),'GapTolerance',tol,'DualFeasibility',feasibility, ...
+    'NewtonIterations',total,'FinalSmoothing',delta,'Seconds',toc(started));
+assert(converged,'Certified SVM did not reach its hinge primal-dual gap tolerance (gap %.6g).',gap);
+end
+
+function value=svmSmoothObjective(Z,y,w,lambda,theta,delta)
+r=1-y.*(Z*theta);loss=zeros(size(r));high=r>=delta;middle=r>0 & ~high;
+loss(high)=r(high)-delta/2;loss(middle)=r(middle).^2/(2*delta);
+value=.5*lambda*sum(theta(1:end-1).^2)+sum(w.*loss);
+end
+
+function [primal,dual,a,feasibility]=svmHingeCertificate(X,y,w,lambda,theta,delta)
+r=1-y.*(X*theta(1:end-1)+theta(end));a=w.*min(1,max(0,r/delta));
+% Projection onto 0<=a<=w and y'*a=0 makes the dual point feasible.
+lo=-max(w);hi=max(w);
+for k=1:70
+    t=(lo+hi)/2;trial=min(w,max(0,a+t*y));
+    if sum(y.*trial)>0,hi=t;else,lo=t;end
+end
+a=min(w,max(0,a+((lo+hi)/2)*y));feasibility=abs(sum(y.*a));q=X'*(a.*y);
+primal=.5*lambda*sum(theta(1:end-1).^2)+sum(w.*max(0,r));
+dual=sum(a)-sum(q.^2)/(2*lambda);
 end
