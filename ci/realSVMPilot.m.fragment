@@ -1,0 +1,38 @@
+function realPilot
+files=dir(fullfile('recovery','pilot-prep','**','prepared.mat'));assert(numel(files)==1);
+z=load(fullfile(files(1).folder,files(1).name),'prep');prep=z.prep;
+files=dir(fullfile('recovery','pilot-old','**','Fold_01.mat'));assert(numel(files)==1);
+z=load(fullfile(files(1).folder,files(1).name),'part');old=z.part;
+cfg=configuration();assert(cfg.Seed==prep.Config.Seed && ~cfg.QuickTest);
+h=prep.Healthy;p=prep.Patient;names=prep.Names;
+a=[h.A(h.IA,:);p.A(p.IA,:)];b=[h.B(h.IB,:);p.B(p.IB,:)];
+assert(isequal(a.SubjectID,b.SubjectID) && isequal(a.FileName,b.FileName));
+[ids,~,s]=unique(a.SubjectID,'sorted');y=accumarray(s,double(a.Label),[],@mean);
+d=makeData(double(b{:,cellstr(names.Frequency)}),s,y,ids,"F75_"+names.Frequency);
+[tr,te]=holdoutSubjects(y,cfg.TestFraction,cfg.Seed);outer=zeros(numel(ids),1);
+outer(tr)=groupFolds(y(tr),cfg.MaxFolds,cfg.Seed+1);
+subjects=find(tr & outer~=5);fold=groupFolds(y(subjects),cfg.MaxFolds,cfg.Seed+20005);
+training=subjects(fold~=1);validation=subjects(fold==1);
+assert(isequal(ids(training),old.Meta.TrainingSubjects) && isequal(ids(validation),old.Meta.ValidationSubjects));
+assert(~any(te([training;validation])) && ~old.Meta.TestEvaluated);
+[fitIDs,calIDs]=calibrationSplit(training,y,cfg);rows=trainingRows(d,training,cfg);
+fitMask=ismember(d.S(rows),fitIDs);calMask=ismember(d.S(rows),calIDs);
+pre=fitPreprocessor(d.X(rows(fitMask),:));x=applyPreprocessor(d.X(rows,:),pre);
+vr=find(ismember(d.S,validation));xv=applyPreprocessor(d.X(vr,:),pre);
+ys=y(d.S(rows));weights=subjectWeights(d.S(rows),ys);seed=cfg.Seed+40000+5+1;
+out=fullfile('recovery','pilot-reports');if ~isfolder(out),mkdir(out);end
+results=table();
+for r=1:4
+ [order,~]=rankFeatures(x(fitMask,:),d.S(rows(fitMask)),y,cfg.Rankers(r),cfg,seed+r);
+ for k=unique([1,31,33])
+  rng(seed+100*r+1000+k,'twister');started=tic;
+  model=fitModel(x(:,order(1:k)),ys,weights,"SVM",fitMask,calMask,d.S(rows),cfg);
+  fp=modelProbability(model,xv(:,order(1:k)));assert(all(isfinite(fp) & fp>=0 & fp<=1));
+  pp=aggregateScores(fp,d.S(vr),validation);m=metrics(y(validation),pp>=.5);
+  q=table(cfg.Rankers(r),k,model.SolverInfo.PrimalDualGap,toc(started),m.BalancedAccuracy, ...
+   false,'VariableNames',{'Ranker','K','PrimalDualGap','Seconds','ValidationBA','TestEvaluated'});
+  results=[results;q];writetable(results,fullfile(out,'Real_SVM_Pilot.csv')); %#ok<AGROW>
+ end
+end
+assert(height(results)==12);fprintf('REAL_SVM_PILOT_PASSED; TEST UNTOUCHED\n');disp(results);
+end

@@ -1,0 +1,51 @@
+name: Real data SVM repair pilot
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - runRealSVMPilot.m
+      - ci/realSVMPilot.m.fragment
+      - .github/workflows/real-svm-pilot.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  pilot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d1
+          run-id: 41904333768
+          github-token: ${{ github.token }}
+          path: recovery/pilot-prep
+      - uses: actions/download-artifact@v4
+        with:
+          name: cv-inner-d1-o5-s5-b1
+          run-id: 41904333768
+          github-token: ${{ github.token }}
+          path: recovery/pilot-old
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: runRealSVMPilot
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-svm-pilot
+          path: recovery/pilot-reports/
+      - name: Preserve pilot report
+        if: always()
+        run: |
+          if [ -d recovery/pilot-reports ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add recovery/pilot-reports
+            git commit -m 'Record real-data SVM pilot without touching Test' || exit 0
+            git push origin HEAD:main
+          fi
