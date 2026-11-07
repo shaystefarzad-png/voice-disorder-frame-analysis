@@ -17,24 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p recovery/full-run-diagnosis
-          gh api --paginate --slurp 'repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42255192906/jobs?per_page=100' > /tmp/research-job-pages.json
-          python3 - <<'PY'
-          import json,pathlib,subprocess,re
-          root=pathlib.Path('recovery/full-run-diagnosis')
-          jobs=[j for page in json.loads(pathlib.Path('/tmp/research-job-pages.json').read_text()) for j in page['jobs'] if j['conclusion']=='failure']
-          (root/'failed-jobs.jsonl').write_text('\n'.join(json.dumps({k:j[k] for k in ['id','name','conclusion','steps']}) for j in jobs))
-          for job in jobs:
-              result=subprocess.run(['gh','api',f'repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/jobs/{job["id"]}/logs'],capture_output=True,text=True)
-              log=result.stdout if result.returncode==0 else result.stderr
-              lines=log.splitlines()
-              keep=set()
-              for i,line in enumerate(lines):
-                  if re.search(r'Error using|Error in |Required candidate|Certified SVM|##\[error\]|timed out|exceeded|assert|converge|Exception|terminated',line,re.I):
-                      keep.update(range(max(0,i-2),min(len(lines),i+12)))
-              text='\n'.join(lines[i] for i in sorted(keep)) if keep else '\n'.join(lines[-70:])
-              (root/f'job-{job["id"]}-error.txt').write_text(text)
-          PY
+          python3 ci/diagnoseFullFailure.py
       - name: Preserve exact failure evidence
         run: |
           git config user.name 'github-actions[bot]'
