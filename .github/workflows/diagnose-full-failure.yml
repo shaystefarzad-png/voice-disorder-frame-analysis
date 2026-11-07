@@ -1,0 +1,43 @@
+name: Diagnose full research failure without retraining
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-full-failure.yml
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read failed job and its actual MATLAB error
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p recovery/full-run-diagnosis
+          gh api --paginate repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42255192906/jobs --jq '.jobs[] | select(.conclusion=="failure") | {id,name,conclusion,steps}' > recovery/full-run-diagnosis/failed-jobs.jsonl
+          python3 - <<'PY'
+          import json,pathlib,subprocess,re
+          root=pathlib.Path('recovery/full-run-diagnosis')
+          for line in (root/'failed-jobs.jsonl').read_text().splitlines():
+              job=json.loads(line)
+              result=subprocess.run(['gh','api',f'repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/jobs/{job["id"]}/logs'],capture_output=True,text=True)
+              log=result.stdout if result.returncode==0 else result.stderr
+              lines=log.splitlines()
+              keep=set()
+              for i,line in enumerate(lines):
+                  if re.search(r'Error using|Error in |Required candidate|Certified SVM|##\[error\]|timed out|exceeded|assert|converge|Exception|terminated',line,re.I):
+                      keep.update(range(max(0,i-2),min(len(lines),i+12)))
+              text='\n'.join(lines[i] for i in sorted(keep)) if keep else '\n'.join(lines[-70:])
+              (root/f'job-{job["id"]}-error.txt').write_text(text)
+          PY
+      - name: Preserve exact failure evidence
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/full-run-diagnosis
+          git commit -m 'Record exact blocking error from full research run' || exit 0
+          git push origin HEAD:main
