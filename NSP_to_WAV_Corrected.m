@@ -82,12 +82,12 @@ function [x,fs]=readNSP16(file)
 fid=fopen(file,'rb','ieee-le');assert(fid>=0,'Cannot open %s.',file);
 cleanup=onCleanup(@()fclose(fid)); %#ok<NASGU>
 fseek(fid,0,'eof');bytes=ftell(fid);fseek(fid,0,'bof');
-magic=char(fread(fid,8,'uint8=>char')');assert(strcmp(magic,'FORMDS16'),'Unsupported NSP container; expected FORMDS16.');
+magic=char(fread(fid,8,'*uint8')');assert(strcmp(magic,'FORMDS16'),'Unsupported NSP container; expected FORMDS16.');
 size=fread(fid,1,'uint32=>double');assert(isscalar(size)&&size==bytes-12,'Container length mismatch.');
 fs=[];expected=[];x=[];dataSeen=false;headerSeen=false;
 while ftell(fid)<bytes
     assert(bytes-ftell(fid)>=8,'Truncated NSP chunk header.');
-    tag=char(fread(fid,4,'uint8=>char')');count=fread(fid,1,'uint32=>double');start=ftell(fid);
+    tag=char(fread(fid,4,'*uint8')');count=fread(fid,1,'uint32=>double');start=ftell(fid);
     assert(isscalar(count)&&start+count<=bytes,'Truncated NSP chunk payload.');
     switch tag
         case 'HEDR'
@@ -158,7 +158,7 @@ bad=fullfile(folder,'bad.nsp');writeSyntheticNSP(bad,x,fs,numel(x)+1);
 failed=false;try,readNSP16(bad);catch,failed=true;end;assert(failed,'Malformed sample count was accepted.');
 index=containers.Map('KeyType','char','ValueType','any');index(nspNameKey('106-a_n'))={file,bad};
 failed=false;try,resolveNSP('unknown/106-a_n.nsp',index);catch,failed=true;end;assert(failed,'Ambiguous basename was accepted.');
-assert(isempty(detectNSPDisease('D:/Abnormal/106-a_n.nsp')));
+assert(strlength(detectNSPDisease('D:/Abnormal/106-a_n.nsp'))==0);
 assert(detectNSPDisease('D:/Hyperfunktionelle/106-a_n.nsp')=="Hyperfunktionelle");
 fprintf('NSP_PARSER_EXACT_PCM_WAV_AND_AMBIGUITY_CHECKS_PASSED\n');
 end
