@@ -1,0 +1,306 @@
+function hdStage
+root=getenv('HYPER_DEV_ROOT');out=fullfile(root,'hyper-development');
+if ~isfolder(out),mkdir(out);end
+stage=string(getenv('HYPER_DEV_STAGE'));cfg=hdConfig(stage=="smoke");
+maxNumCompThreads(1);
+switch stage
+    case "prepare"
+        files=dir(fullfile(root,'hyper-prep-source','**','prepared.mat'));assert(numel(files)==1);
+        old=load(fullfile(files(1).folder,files(1).name),'prep');old=old.prep;
+        assert(old.Disease=="Hyperfunktionelle" && ~old.Config.QuickTest);
+        allowed=old.Cohort.SubjectID(old.Cohort.Train);forbidden=old.Cohort.SubjectID(old.Cohort.Test);
+        a=[old.Healthy.A(old.Healthy.IA,:);old.Patient.A(old.Patient.IA,:)];
+        b=[old.Healthy.B(old.Healthy.IB,:);old.Patient.B(old.Patient.IB,:)];
+        assert(isequal(a.SubjectID,b.SubjectID) && isequal(a.FileName,b.FileName));
+        % Strip original Test before constructing numeric feature matrices.
+        keep=ismember(a.SubjectID,allowed);a=a(keep,:);b=b(keep,:);
+        assert(isempty(intersect(unique(a.SubjectID),forbidden)));
+        prep=hdSummarize(a,b,old.Names,cfg);prep.ForbiddenIDs=forbidden;
+        assert(numel(prep.IDs)==175 && sum(prep.Y==0)==97 && sum(prep.Y==1)==78);
+        prep.Source=struct('FrozenOriginalRun','42255192906','Disease','Hyperfunktionelle', ...
+            'OriginalTestExcluded',true,'OriginalTrainingSubjects',175,'OriginalTestSubjectsExcluded',44);
+        prep.Signature=hdSignature(cfg);atomicSave(fullfile(out,'TrainingOnlyPrepared.mat'),'prep',prep);
+        protocol=struct('Configuration',cfg,'Source',prep.Source,'Signature',prep.Signature, ...
+            'Representation','Within-recording matched-frame means, then equal-recording subject means; original 43 feature names', ...
+            'Inference','Exploratory internal nested CV; no original Test or external validation', ...
+            'Selection','Inner CV mean BA; lower SD; higher sensitivity; fewer features; stable parameter order', ...
+            'Voting','Branches selected independently in inner CV; compare hard and weights 0,.25,.5,.75,1 only inside inner CV', ...
+            'Threshold',.5,'NoTestThresholdTuning',true);
+        hdWriteJSON(fullfile(out,'Protocol.json'),protocol);
+        writetable(table(prep.IDs,prep.Y,prep.OuterFold,'VariableNames',{'SubjectID','Label','OuterFold'}),fullfile(out,'TrainingOnlyCohort.csv'));
+        fprintf('PREPARED 175 ORIGINAL TRAINING SUBJECTS; ALL 44 ORIGINAL TEST SUBJECTS EXCLUDED\n');
+    case "outer"
+        z=load(fullfile(out,'TrainingOnlyPrepared.mat'),'prep');prep=z.prep;
+        assert(strcmp(prep.Signature,hdSignature(cfg)));
+        pool=gcp('nocreate');if isempty(pool),pool=parpool('local',2);end;assert(pool.NumWorkers==2);
+        hdOuter(prep,cfg,str2double(getenv('HYPER_DEV_OUTER')),out,true);
+    case "aggregate"
+        z=load(fullfile(out,'TrainingOnlyPrepared.mat'),'prep');hdAggregate(z.prep,cfg,out);
+    case "smoke"
+        rng(1405,'twister');n=60;names=featureNames();y=[zeros(30,1);ones(30,1)];
+        x=randn(n,43);z=randn(n,43);x(:,1:4)=x(:,1:4)+1.0*y;z(:,11:18)=z(:,11:18)+.8*y;
+        prep=hdFromSubjectData(x,z,"synthetic_"+string((1:n)'),y,names,cfg);
+        prep.ForbiddenIDs="MUST_NEVER_BE_PRESENT";prep.Signature=hdSignature(cfg);
+        hdCheckIsolation(prep,cfg);
+        smoke=fullfile(out,'SMOKE_ONLY');if ~isfolder(smoke),mkdir(smoke);end
+        for k=1:cfg.OuterFolds,hdOuter(prep,cfg,k,smoke,false);end
+        before=dir(fullfile(smoke,'Outer_01.mat'));hdOuter(prep,cfg,1,smoke,false);after=dir(fullfile(smoke,'Outer_01.mat'));
+        assert(before.datenum==after.datenum,'Resume unnecessarily recomputed completed fold.');
+        hdAggregate(prep,cfg,smoke);
+        fprintf('TRAINING_ONLY_DEVELOPMENT_SMOKE_PASSED; SYNTHETIC ONLY\n');
+    otherwise,error('Unknown training development stage.');
+end
+end
+
+function cfg=hdConfig(smoke)
+cfg=configuration();cfg.OuterFolds=5;cfg.InnerFolds=3;cfg.Smoke=smoke;
+cfg.NumTrees=40;cfg.NCAIterations=60;cfg.ModelGridVersion='hyper-training-only-v1';
+cfg.KCuts=[5,10,20,43];cfg.SoftWeights=[0,.25,.5,.75,1];
+if smoke,cfg.OuterFolds=2;cfg.InnerFolds=2;cfg.NumTrees=8;cfg.NCAIterations=10;cfg.KCuts=[3,43];end
+end
+
+function signature=hdSignature(cfg)
+root=getenv('HYPER_DEV_ROOT');signature=fileSHA(fullfile(root,'VoiceDiseaseModeling_Final.m'))+"_"+ ...
+    fileSHA(fullfile(root,'ci','hyperDevelopment.m.fragment'))+"_"+string(cfg.ModelGridVersion)+"_"+string(cfg.Smoke);
+end
+
+function prep=hdSummarize(a,b,names,cfg)
+[ids,~,subject]=unique(a.SubjectID,'sorted');y=accumarray(subject,double(a.Label),[],@mean);
+assert(all(ismember(y,[0,1])));key=a.SubjectID+"|"+a.FileName+"|"+a.Vowel;
+[~,~,file]=unique(key,'sorted');fileSubject=accumarray(file,subject,[],@min);
+x=double(a{:,cellstr(names.All)});z=double(b{:,cellstr(names.All)});
+u=zeros(numel(ids),43);v=u;
+for j=1:43
+    fx=accumarray(file,x(:,j),[],@(q)mean(q,'omitnan'));
+    fz=accumarray(file,z(:,j),[],@(q)mean(q,'omitnan'));
+    u(:,j)=accumarray(fileSubject,fx,[],@(q)mean(q,'omitnan'));
+    v(:,j)=accumarray(fileSubject,fz,[],@(q)mean(q,'omitnan'));
+end
+prep=hdFromSubjectData(u,v,ids,y,names,cfg);
+end
+
+function prep=hdFromSubjectData(x,z,ids,y,names,cfg)
+prep=struct('IDs',ids,'Y',y,'Names',names,'OuterFold',groupFolds(y,cfg.OuterFolds,cfg.Seed+61000));
+prep.X={x,z,[x(:,1:10),z(:,11:43)],x(:,1:10),z(:,11:43)};
+prep.FeatureNames={names.All,names.All,["T25_"+names.Time,"F75_"+names.Frequency],"T25_"+names.Time,"F75_"+names.Frequency};
+prep.Scenarios=["S1_25ms","S2_75ms","S3A_Hybrid","Time25","Frequency75"];
+end
+
+function grid=hdGrid(cfg,p)
+kind=[repmat("SVM_Linear",1,3),repmat("SVM_RBF",1,3),repmat("KNN",1,3),repmat("RandomForest",1,2),repmat("NaiveBayes",1,2)];
+value=[.1,1,10,.1,1,10,3,7,15,1,5,1e-6,1e-3];
+if cfg.Smoke,ix=[2,5,7,10,12];kind=kind(ix);value=value(ix);end
+counts=unique(min(cfg.KCuts,p));[C,R,K]=ndgrid(1:numel(kind),1:numel(cfg.Rankers),counts);
+grid=table(reshape(kind(C(:)),[],1),reshape(value(C(:)),[],1),reshape(cfg.Rankers(R(:)),[],1),K(:), ...
+    'VariableNames',{'Classifier','Parameter','Ranker','K'});
+end
+
+function r=hdOuter(prep,cfg,k,out,parallel)
+assert(k>=1 && k<=cfg.OuterFolds && isempty(intersect(prep.IDs,prep.ForbiddenIDs)));
+file=fullfile(out,sprintf('Outer_%02d.mat',k));
+if isfile(file)
+    z=load(file,'result');r=z.result;assert(strcmp(r.Signature,prep.Signature));return;
+end
+tr=find(prep.OuterFold~=k);va=find(prep.OuterFold==k);assert(isempty(intersect(tr,va)));
+inner=groupFolds(prep.Y(tr),cfg.InnerFolds,cfg.Seed+62000+k);
+searches=cell(5,1);
+if parallel
+    parfor scenario=1:5
+        searches{scenario}=hdSearch(prep,scenario,tr,inner,cfg,k,out);
+    end
+else
+    for scenario=1:5,searches{scenario}=hdSearch(prep,scenario,tr,inner,cfg,k,out);end
+end
+vote=hdSelectVote(searches{4},searches{5},prep.Y(tr),inner,cfg);
+fp=zeros(numel(va),5);selected=table();
+for scenario=1:5
+    best=searches{scenario}.Candidates(searches{scenario}.Best,:);
+    model=hdTrain(prep,scenario,tr,best,cfg,cfg.Seed+64000+k*100+scenario);
+    fp(:,scenario)=hdPredict(model,prep.X{scenario}(va,:));
+    best.Scenario=prep.Scenarios(scenario);selected=[selected;best]; %#ok<AGROW>
+end
+if hdBetter(table2struct(selected(2,:)),table2struct(selected(1,:))),base=2;else,base=1;end
+pred=table(prep.IDs(va),prep.Y(va),repmat(k,numel(va),1),'VariableNames',{'SubjectID','Label','OuterFold'});
+pred.S1_25ms=fp(:,1);pred.S2_75ms=fp(:,2);pred.S3A_Hybrid=fp(:,3);
+pred.BestSingleScore=fp(:,base);pred.BestSinglePrediction=fp(:,base)>=.5;
+pred.TimeScore=fp(:,4);pred.FrequencyScore=fp(:,5);
+[score,decision]=hdVote(fp(:,4),fp(:,5),vote.Method,vote.Weight,vote.PreferTime);
+pred.S3B_SelectedScore=score;pred.S3B_SelectedPrediction=decision;
+pred.S3B_FixedHalfScore=mean(fp(:,4:5),2);pred.S3B_FixedHalfPrediction=pred.S3B_FixedHalfScore>=.5;
+summary=hdMetricsTable(pred);r=struct('Signature',prep.Signature,'OuterFold',k,'TrainingIDs',prep.IDs(tr), ...
+    'ValidationIDs',prep.IDs(va),'OriginalTestExcluded',true,'Selected',selected,'Voting',vote, ...
+    'BaselineScenario',prep.Scenarios(base),'Predictions',pred,'Summary',summary);
+atomicSave(file,'result',r);writetable(summary,fullfile(out,sprintf('Outer_%02d_Summary.csv',k)));
+fprintf('OUTER %d COMPLETE; ORIGINAL TEST EXCLUDED\n',k);
+end
+
+function search=hdSearch(prep,scenario,tr,fold,cfg,outer,out)
+grid=hdGrid(cfg,size(prep.X{scenario},2));score=nan(numel(tr),height(grid));ba=nan(max(fold),height(grid));se=ba;
+folder=fullfile(out,sprintf('Outer_%02d_Search_%d',outer,scenario));if ~isfolder(folder),mkdir(folder);end
+for f=1:max(fold)
+    file=fullfile(folder,sprintf('Inner_%02d.mat',f));
+    if isfile(file)
+        z=load(file,'part');part=z.part;assert(strcmp(part.Signature,prep.Signature));
+    else
+        fit=tr(fold~=f);val=tr(fold==f);part.Score=nan(numel(val),height(grid));
+        part.BA=nan(1,height(grid));part.Sensitivity=part.BA;part.Signature=prep.Signature;
+        [fitIDs,calIDs]=calibrationSplit(fit,prep.Y,cfg);
+        for ranker=cfg.Rankers
+            % Preprocessing/ranking are fitted within this inner training partition.
+            pre=fitPreprocessor(prep.X{scenario}(fit,:));x=applyPreprocessor(prep.X{scenario}(fit,:),pre);
+            [order,~]=rankFeatures(x,fit,prep.Y,ranker,cfg,cfg.Seed+65000+outer*100+f);
+            svmPre=fitPreprocessor(prep.X{scenario}(fitIDs,:));xs=applyPreprocessor(prep.X{scenario}(fitIDs,:),svmPre);
+            [svmOrder,~]=rankFeatures(xs,fitIDs,prep.Y,ranker,cfg,cfg.Seed+65000+outer*100+f);
+            for j=find(grid.Ranker==ranker)'
+                b=grid(j,:);isSVM=startsWith(b.Classifier,"SVM");
+                if isSVM,pp=svmPre;oo=svmOrder;else,pp=pre;oo=order;end
+                model=hdTrainPrepared(prep.X{scenario},prep.Y,fit,fitIDs,calIDs,b,pp,oo,cfg,cfg.Seed+66000+outer*10000+scenario*1000+f*100+j);
+                prob=hdPredict(model,prep.X{scenario}(val,:));part.Score(:,j)=prob;
+                m=metrics(prep.Y(val),prob>=.5);part.BA(j)=m.BalancedAccuracy;part.Sensitivity(j)=m.Sensitivity;
+            end
+        end
+        assert(all(isfinite(part.Score),'all') && all(isfinite(part.BA)));
+        atomicSave(file,'part',part);
+    end
+    score(fold==f,:)=part.Score;ba(f,:)=part.BA;se(f,:)=part.Sensitivity;
+end
+assert(all(isfinite(score),'all'));grid.MeanBA=mean(ba,1)';grid.StdBA=std(ba,0,1)';grid.Sensitivity=mean(se,1)';
+best=1;for j=2:height(grid),if hdBetter(table2struct(grid(j,:)),table2struct(grid(best,:))),best=j;end,end
+search=struct('Candidates',grid,'Best',best,'OOF',score(:,best),'FoldBA',ba(:,best));
+writetable(grid,fullfile(folder,'InnerCandidates.csv'));atomicSave(fullfile(folder,'Search.mat'),'search',search);
+end
+
+function yes=hdBetter(a,b)
+tol=1e-10;
+if abs(a.MeanBA-b.MeanBA)>tol,yes=a.MeanBA>b.MeanBA;return;end
+if abs(a.StdBA-b.StdBA)>tol,yes=a.StdBA<b.StdBA;return;end
+if abs(a.Sensitivity-b.Sensitivity)>tol,yes=a.Sensitivity>b.Sensitivity;return;end
+yes=a.K<b.K;
+end
+
+function model=hdTrain(prep,scenario,ids,b,cfg,seed)
+[fitIDs,calIDs]=calibrationSplit(ids,prep.Y,cfg);rankIDs=ids;
+if startsWith(b.Classifier,"SVM"),rankIDs=fitIDs;end
+pre=fitPreprocessor(prep.X{scenario}(rankIDs,:));x=applyPreprocessor(prep.X{scenario}(rankIDs,:),pre);
+[order,~]=rankFeatures(x,rankIDs,prep.Y,b.Ranker,cfg,seed);
+model=hdTrainPrepared(prep.X{scenario},prep.Y,ids,fitIDs,calIDs,b,pre,order,cfg,seed);
+end
+
+function model=hdTrainPrepared(X,Y,ids,fitIDs,calIDs,b,pre,order,cfg,seed)
+rng(seed,'twister');cols=order(1:b.K);x=applyPreprocessor(X,pre);x=x(:,cols);
+kind=b.Classifier;model=struct('Kind',kind,'Preprocessor',pre,'Columns',cols);
+if startsWith(kind,"SVM")
+    kernel='linear';if kind=="SVM_RBF",kernel='gaussian';end
+    core=fitcsvm(x(fitIDs,:),Y(fitIDs),'KernelFunction',kernel,'KernelScale',sqrt(numel(cols)), ...
+        'BoxConstraint',b.Parameter,'Standardize',false,'ClassNames',[0;1],'Prior','uniform','Solver','SMO');
+    assert(core.ConvergenceInfo.Converged,'Subject-level SVM failed convergence.');
+    [~,sc]=predict(core,x(calIDs,:));raw=sc(:,core.ClassNames==1);
+    model.Core=core;model.Calibration=fitPlatt(raw,Y(calIDs),subjectWeights(calIDs,Y(calIDs)));
+elseif kind=="KNN"
+    model.Core=fitcknn(x(ids,:),Y(ids),'NumNeighbors',min(b.Parameter,numel(ids)), ...
+        'Distance','euclidean','DistanceWeight','inverse','Standardize',false,'ClassNames',[0;1],'Prior','uniform');
+elseif kind=="RandomForest"
+    tree=templateTree('MinLeafSize',b.Parameter,'NumVariablesToSample',max(1,floor(sqrt(numel(cols)))));
+    model.Core=fitcensemble(x(ids,:),Y(ids),'Method','Bag','NumLearningCycles',cfg.NumTrees, ...
+        'Learners',tree,'ClassNames',[0;1],'Prior','uniform','Options',statset('UseParallel',false));
+elseif kind=="NaiveBayes"
+    for cls=0:1
+        z=x(ids(Y(ids)==cls),:);model.Mu(cls+1,:)=mean(z,1);model.Var(cls+1,:)=max(var(z,1,1),b.Parameter);
+    end
+else,error('Unexpected classifier.');end
+end
+
+function p=hdPredict(model,X)
+x=applyPreprocessor(X,model.Preprocessor);x=x(:,model.Columns);
+if startsWith(model.Kind,"SVM")
+    [~,sc]=predict(model.Core,x);raw=sc(:,model.Core.ClassNames==1);b=model.Calibration;
+    p=sigmoid([ones(size(raw)),(raw-b.Mu)/b.Scale]*b.Beta);
+elseif model.Kind=="NaiveBayes"
+    l=zeros(size(x,1),2);for cls=1:2,l(:,cls)=-.5*sum(log(2*pi*model.Var(cls,:))+(x-model.Mu(cls,:)).^2./model.Var(cls,:),2);end
+    p=sigmoid(l(:,2)-l(:,1));
+else,[~,sc]=predict(model.Core,x);p=sc(:,model.Core.ClassNames==1);end
+assert(all(isfinite(p)&p>=0&p<=1));
+end
+
+function vote=hdSelectVote(time,freq,y,fold,cfg)
+preferTime=hdBetter(table2struct(time.Candidates(time.Best,:)),table2struct(freq.Candidates(freq.Best,:)));
+methods=["Hard",repmat("Soft",1,numel(cfg.SoftWeights))];weights=[NaN,cfg.SoftWeights];rows=table();
+for j=1:numel(methods)
+    [~,h]=hdVote(time.OOF,freq.OOF,methods(j),weights(j),preferTime);ba=zeros(max(fold),1);se=ba;
+    for f=1:max(fold),m=metrics(y(fold==f),h(fold==f));ba(f)=m.BalancedAccuracy;se(f)=m.Sensitivity;end
+    rows=[rows;table(methods(j),weights(j),mean(ba),std(ba),mean(se),0,'VariableNames',{'Method','Weight','MeanBA','StdBA','Sensitivity','K'})]; %#ok<AGROW>
+end
+best=1;for j=2:height(rows),if hdBetter(table2struct(rows(j,:)),table2struct(rows(best,:))),best=j;end,end
+vote=table2struct(rows(best,:));vote.PreferTime=preferTime;vote.UsesBothBranches=vote.Method=="Soft" && vote.Weight>0 && vote.Weight<1;vote.Candidates=rows;
+end
+
+function [p,h]=hdVote(pt,pf,method,weight,preferTime)
+if method=="Hard"
+    ht=pt>=.5;hf=pf>=.5;h=ht;
+    if ~preferTime,h(ht~=hf)=hf(ht~=hf);end
+    p=(pt+pf)/2;
+else,p=weight*pt+(1-weight)*pf;h=p>=.5;end
+end
+
+function t=hdMetricsTable(p)
+names=["S1_25ms","S2_75ms","S3A_Hybrid","BestSingle","S3B_Selected","S3B_FixedHalf"];
+t=table();
+for name=names
+    if ismember(name,["BestSingle","S3B_Selected","S3B_FixedHalf"]),h=p.(name+"Prediction");else,h=p.(name)>=.5;end
+    m=metrics(p.Label,h);r=table(name,height(p),m.Accuracy,m.BalancedAccuracy,m.Sensitivity,m.Specificity,m.F1,m.TP,m.TN,m.FP,m.FN, ...
+        'VariableNames',{'Scenario','Subjects','Accuracy','BalancedAccuracy','Sensitivity','Specificity','F1','TP','TN','FP','FN'});
+    t=[t;r]; %#ok<AGROW>
+end
+end
+
+function hdAggregate(prep,cfg,out)
+pred=table();folds=table();selections=table();votes=table();
+for k=1:cfg.OuterFolds
+    z=load(fullfile(out,sprintf('Outer_%02d.mat',k)),'result');r=z.result;
+    assert(strcmp(r.Signature,prep.Signature) && r.OriginalTestExcluded);
+    assert(isempty(intersect(r.TrainingIDs,r.ValidationIDs)) && isempty(intersect(r.ValidationIDs,prep.ForbiddenIDs)));
+    pred=[pred;r.Predictions];q=r.Summary;q.OuterFold=repmat(k,height(q),1);folds=[folds;q]; %#ok<AGROW>
+    q=r.Selected;q.OuterFold=repmat(k,height(q),1);selections=[selections;q]; %#ok<AGROW>
+    v=rmfield(r.Voting,'Candidates');v.OuterFold=k;v.BaselineScenario=r.BaselineScenario;votes=[votes;struct2table(v)]; %#ok<AGROW>
+end
+assert(height(pred)==numel(prep.IDs) && numel(unique(pred.SubjectID))==numel(prep.IDs));
+assert(isempty(intersect(pred.SubjectID,prep.ForbiddenIDs)));
+summary=hdMetricsTable(pred);summary.MeanFoldBA=zeros(height(summary),1);summary.StdFoldBA=summary.MeanFoldBA;
+for j=1:height(summary),q=folds.BalancedAccuracy(folds.Scenario==summary.Scenario(j));summary.MeanFoldBA(j)=mean(q);summary.StdFoldBA(j)=std(q);end
+file=fullfile(out,'Hyperfunktionelle_TrainingOnly_Development.xlsx');
+writetable(summary,file,'Sheet','Summary');writetable(pred,file,'Sheet','OuterOOFSubjects');writetable(folds,file,'Sheet','OuterFoldMetrics');
+writetable(selections,file,'Sheet','InnerSelectedModels');writetable(votes,file,'Sheet','InnerSelectedVoting');
+notes=table(["Exploratory development using only the 175 original training subjects."; ...
+    "Original Test was never evaluated. No external validation or hypothesis confirmation."; ...
+    "Subject-level feature means change the representation relative to the original frame-trained pipeline."; ...
+    "All preprocessing, ranking, hyperparameters, best baseline, and voting selection were confined to inner training/CV."; ...
+    "Outer folds are not independent studies. This report contains no significance claims."; ...
+    "With two hard voters and fixed tie preference, Hard equals the preferred branch; weights 0/1 also use only one branch. See UsesBothBranches."; ...
+    "A result from a new representation is not a paired performance improvement over the old 44-subject Test."], 'VariableNames',{'Interpretation'});
+writetable(notes,file,'Sheet','Interpretation');writetable(summary,fullfile(out,'Development_Summary.csv'));
+hdWriteJSON(fullfile(out,'Completion.json'),struct('Status','Completed','OriginalTestEvaluated',false,'Subjects',height(pred),'OuterFolds',cfg.OuterFolds,'InnerFolds',cfg.InnerFolds,'Smoke',cfg.Smoke));
+fprintf('TRAINING_ONLY_DEVELOPMENT_COMPLETE; NO HYPOTHESIS CONFIRMATION CLAIM\n');disp(summary);
+end
+
+function hdWriteJSON(file,value)
+f=fopen(file,'w');assert(f>=0);fwrite(f,jsonencode(value),'char');fclose(f);
+end
+
+function hdCheckIsolation(prep,cfg)
+% Counterfactual test: corrupt held-out features/labels; fitting must not change.
+tr=find(prep.OuterFold~=1);va=find(prep.OuterFold==1);changed=prep;
+changed.X{1}(va,:)=1e12;changed.Y(va)=1-changed.Y(va);
+grid=hdGrid(cfg,43);kinds=unique(grid.Classifier,'stable');
+for kind=kinds'
+    j=find(grid.Classifier==kind,1);b=grid(j,:);
+    a=hdTrain(prep,1,tr,b,cfg,1410);z=hdTrain(changed,1,tr,b,cfg,1410);
+    assert(isequaln(a.Preprocessor,z.Preprocessor) && isequal(a.Columns,z.Columns));
+    pa=hdPredict(a,prep.X{1}(va,:));pz=hdPredict(z,prep.X{1}(va,:));
+    assert(max(abs(pa-pz))<1e-10,'Outer held-out data influenced fitting.');
+end
+[~,hard]=hdVote([.9;.2;.6],[.1;.8;.7],"Hard",NaN,true);
+assert(isequal(hard,[true;false;true]));
+[p,soft]=hdVote([.9;.2;.6],[.1;.8;.7],"Soft",.25,false);
+assert(max(abs(p-[.3;.65;.675]))<1e-12 && isequal(soft,[false;true;true]));
+fprintf('OUTER_HELDOUT_FITTING_INVARIANCE_AND_VOTING_CHECKS_PASSED\n');
+end

@@ -1,0 +1,151 @@
+name: Hyperfunctional training-only nested development
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ci/hyper-development-request.json
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: hyper-training-only-development
+  cancel-in-progress: false
+env:
+  HYPER_DEV_ROOT: ${{ github.workspace }}
+jobs:
+  smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      HYPER_DEV_STAGE: smoke
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: runHyperTrainingDevelopment
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hyper-development-smoke
+          path: hyper-development/SMOKE_ONLY/
+          retention-days: 30
+  prepare:
+    needs: smoke
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      HYPER_DEV_STAGE: prepare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: prep-d2
+          run-id: 42255192906
+          github-token: ${{ github.token }}
+          path: hyper-prep-source
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: runHyperTrainingDevelopment
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyper-development-prepared
+          path: hyper-development/
+          retention-days: 30
+  outer:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        fold: [1, 2, 3, 4, 5]
+    env:
+      HYPER_DEV_STAGE: outer
+      HYPER_DEV_OUTER: ${{ matrix.fold }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hyper-development-prepared
+          path: hyper-development/
+      - name: Restore completed inner searches on retry
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hyper-development-outer-${{ matrix.fold }}
+          path: hyper-development/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: runHyperTrainingDevelopment
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hyper-development-outer-${{ matrix.fold }}
+          path: hyper-development/
+          overwrite: true
+          retention-days: 30
+  aggregate:
+    needs: [prepare, outer]
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      HYPER_DEV_STAGE: aggregate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hyper-development-outer-*
+          merge-multiple: true
+          path: hyper-development/
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: runHyperTrainingDevelopment
+      - name: Package exploratory report; original research outputs remain intact
+        run: |
+          python3 - <<'PY'
+          import pathlib,os,shutil,zipfile
+          source=pathlib.Path('hyper-development');out=pathlib.Path('development-results')/('hyper-training-'+os.environ['GITHUB_RUN_ID']);out.mkdir(parents=True)
+          for p in source.rglob('*'):
+              if p.is_file() and p.suffix in {'.xlsx','.csv','.json'}:
+                  dest=out/p.relative_to(source);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(p,dest)
+          for name in ['runHyperTrainingDevelopment.m','ci/hyperDevelopment.m.fragment','.github/workflows/hyper-training-development.yml','ci/hyper-development-request.json']:
+              shutil.copy2(name,out/pathlib.Path(name).name)
+          with zipfile.ZipFile(out/'TrainingOnly_Development.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for p in out.rglob('*'):
+                  if p.is_file() and p.suffix!='.zip':z.write(p,p.relative_to(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hyper-development-final-report
+          path: development-results/
+          retention-days: 30
+      - name: Preserve development report with explicit internal-validation scope
+        run: |
+          git fetch origin main --quiet
+          git merge --ff-only origin/main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add development-results/
+          git commit -m 'Record exploratory hyperfunctional training-only development results'
+          git push origin HEAD:main
