@@ -18,12 +18,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p recovery/full-run-diagnosis
-          gh api --paginate repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42255192906/jobs --jq '.jobs[] | select(.conclusion=="failure") | {id,name,conclusion,steps}' > recovery/full-run-diagnosis/failed-jobs.jsonl
+          gh api --paginate --slurp 'repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42255192906/jobs?per_page=100' > /tmp/research-job-pages.json
           python3 - <<'PY'
           import json,pathlib,subprocess,re
           root=pathlib.Path('recovery/full-run-diagnosis')
-          for line in (root/'failed-jobs.jsonl').read_text().splitlines():
-              job=json.loads(line)
+          jobs=[j for page in json.loads(pathlib.Path('/tmp/research-job-pages.json').read_text()) for j in page['jobs'] if j['conclusion']=='failure']
+          (root/'failed-jobs.jsonl').write_text('\n'.join(json.dumps({k:j[k] for k in ['id','name','conclusion','steps']}) for j in jobs))
+          for job in jobs:
               result=subprocess.run(['gh','api',f'repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/jobs/{job["id"]}/logs'],capture_output=True,text=True)
               log=result.stdout if result.returncode==0 else result.stderr
               lines=log.splitlines()
