@@ -1,0 +1,28 @@
+2026-11-07T08:31:29.5622879Z (node:1900) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-11-07T08:31:29.5623642Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-11-07T08:31:29.8207457Z ##[error]Unable to download artifact(s): Artifact not found for name: cv-inner-d6-o7-s4-b5
+        Please ensure that your artifact is not expired and the artifact was uploaded using a compatible version of toolkit/upload-artifact.
+        For more information, visit the GitHub Artifacts FAQ: https://github.com/actions/toolkit/blob/main/packages/artifact/docs/faq.md
+2026-11-07T08:31:29.8321331Z ##[group]Run matlab-actions/setup-matlab@v2
+2026-11-07T08:31:29.8321576Z with:
+2026-11-07T08:31:29.8321734Z   release: R2023b
+2026-11-07T08:31:29.8322001Z   products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+2026-11-07T08:31:29.8322334Z   install-system-dependencies: auto
+2026-11-07T08:31:29.8322544Z   cache: false
+2026-11-07T08:31:29.8322700Z env:
+2026-11-07T08:31:29.8323080Z   VOICE_FEATURE_DIR: /home/runner/work/voice-disorder-frame-analysis/voice-disorder-frame-analysis/datasets/corrected-v2
+2026-11-07T08:31:29.8323702Z   VOICE_OUTPUT_DIR: /home/runner/work/voice-disorder-frame-analysis/voice-disorder-frame-analysis/final-results
+2026-11-07T08:32:04.8984365Z malloc(): unsorted double linked list corrupted
+2026-11-07T08:32:08.3666150Z ##[endgroup]
+2026-11-07T08:32:08.3667556Z ##[error]Error: Script exited with non-zero code 255
+2026-11-07T08:32:08.3807416Z ##[group]Run actions/upload-artifact@v4
+2026-11-07T08:32:08.3807655Z with:
+2026-11-07T08:32:08.3807856Z   name: cv-inner-d6-o7-s4-b5
+2026-11-07T08:32:08.3808068Z   path: final-results/
+2026-11-07T08:32:08.3808260Z   overwrite: true
+2026-11-07T08:32:08.3808433Z   retention-days: 30
+2026-11-07T08:32:08.3808617Z   if-no-files-found: warn
+2026-11-07T08:32:08.3808813Z   compression-level: 6
+2026-11-07T08:32:08.3809001Z   include-hidden-files: false
+2026-11-07T08:32:08.3809191Z env:
+2026-11-07T08:32:08.3809773Z   VOICE_FEATURE_DIR: /home/runner/work/voice-disorder-frame-analysis/voice-disorder-frame-analysis/datasets/corrected-v2
