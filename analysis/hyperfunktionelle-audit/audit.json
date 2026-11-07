@@ -1,0 +1,623 @@
+{
+  "subjects": {
+    "Train_0": 97,
+    "Train_1": 78,
+    "Test_0": 24,
+    "Test_1": 20
+  },
+  "split_overlap": 0,
+  "summary": [
+    {
+      "Disease": "Hyperfunktionelle",
+      "Scenario": "S1_25ms",
+      "Classifier": "KNN",
+      "Ranker": "Ttest",
+      "FeatureCount": 9,
+      "CV_MeanBA": 0.6741666666666667,
+      "CV_StdBA": 0.08651338712340136,
+      "TestAccuracy": 0.5227272727272727,
+      "TestBalancedAccuracy": 0.5125,
+      "Sensitivity": 0.4,
+      "Specificity": 0.625,
+      "F1": 0.43243243243243246,
+      "TP": 8,
+      "TN": 15,
+      "FP": 9,
+      "FN": 12,
+      "TestSubjects": 44
+    },
+    {
+      "Disease": "Hyperfunktionelle",
+      "Scenario": "S2_75ms",
+      "Classifier": "KNN",
+      "Ranker": "CohenD",
+      "FeatureCount": 4,
+      "CV_MeanBA": 0.6463888888888888,
+      "CV_StdBA": 0.15175361616092262,
+      "TestAccuracy": 0.4772727272727273,
+      "TestBalancedAccuracy": 0.4583333333333333,
+      "Sensitivity": 0.25,
+      "Specificity": 0.6666666666666666,
+      "F1": 0.30303030303030304,
+      "TP": 5,
+      "TN": 16,
+      "FP": 8,
+      "FN": 15,
+      "TestSubjects": 44
+    },
+    {
+      "Disease": "Hyperfunktionelle",
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "KNN",
+      "Ranker": "CohenD",
+      "FeatureCount": 7,
+      "CV_MeanBA": 0.6580357142857143,
+      "CV_StdBA": 0.13247508861468463,
+      "TestAccuracy": 0.5681818181818182,
+      "TestBalancedAccuracy": 0.5541666666666667,
+      "Sensitivity": 0.4,
+      "Specificity": 0.7083333333333334,
+      "F1": 0.45714285714285713,
+      "TP": 8,
+      "TN": 17,
+      "FP": 7,
+      "FN": 12,
+      "TestSubjects": 44
+    },
+    {
+      "Disease": "Hyperfunktionelle",
+      "Scenario": "S3B_Voting",
+      "Classifier": "KNN + RandomForest",
+      "Ranker": "ReliefF + CohenD",
+      "FeatureCount": 13,
+      "CV_MeanBA": 0.5978968253968254,
+      "CV_StdBA": 0.14145343330625348,
+      "TestAccuracy": 0.6590909090909091,
+      "TestBalancedAccuracy": 0.65,
+      "Sensitivity": 0.55,
+      "Specificity": 0.75,
+      "F1": 0.5945945945945946,
+      "TP": 11,
+      "TN": 18,
+      "FP": 6,
+      "FN": 9,
+      "TestSubjects": 44
+    }
+  ],
+  "cv_best_by_classifier": {
+    "1": {
+      "SVM": {
+        "Classifier": "SVM",
+        "Ranker": "ReliefF",
+        "K": 19,
+        "MeanBA": 0.6401190476190477,
+        "StdBA": 0.1205665808817684,
+        "Sensitivity": 0.6535714285714286,
+        "Valid": true
+      },
+      "KNN": {
+        "Classifier": "KNN",
+        "Ranker": "Ttest",
+        "K": 9,
+        "MeanBA": 0.6741666666666667,
+        "StdBA": 0.08651338712340136,
+        "Sensitivity": 0.675,
+        "Valid": true
+      },
+      "RandomForest": {
+        "Classifier": "RandomForest",
+        "Ranker": "Ttest",
+        "K": 9,
+        "MeanBA": 0.6505555555555556,
+        "StdBA": 0.10046005878954355,
+        "Sensitivity": 0.6,
+        "Valid": true
+      },
+      "NaiveBayes": {
+        "Classifier": "NaiveBayes",
+        "Ranker": "NCA",
+        "K": 22,
+        "MeanBA": 0.5687301587301586,
+        "StdBA": 0.06318240459926182,
+        "Sensitivity": 0.22857142857142856,
+        "Valid": true
+      }
+    },
+    "2": {
+      "SVM": {
+        "Classifier": "SVM",
+        "Ranker": "NCA",
+        "K": 34,
+        "MeanBA": 0.6363690476190477,
+        "StdBA": 0.13635715475197263,
+        "Sensitivity": 0.6660714285714285,
+        "Valid": true
+      },
+      "KNN": {
+        "Classifier": "KNN",
+        "Ranker": "CohenD",
+        "K": 4,
+        "MeanBA": 0.6463888888888888,
+        "StdBA": 0.15175361616092262,
+        "Sensitivity": 0.625,
+        "Valid": true
+      },
+      "RandomForest": {
+        "Classifier": "RandomForest",
+        "Ranker": "Ttest",
+        "K": 22,
+        "MeanBA": 0.6253373015873016,
+        "StdBA": 0.12347839494285906,
+        "Sensitivity": 0.6017857142857143,
+        "Valid": true
+      },
+      "NaiveBayes": {
+        "Classifier": "NaiveBayes",
+        "Ranker": "ReliefF",
+        "K": 11,
+        "MeanBA": 0.609186507936508,
+        "StdBA": 0.10904630856286103,
+        "Sensitivity": 0.5839285714285715,
+        "Valid": true
+      }
+    },
+    "3": {
+      "SVM": {
+        "Classifier": "SVM",
+        "Ranker": "ReliefF",
+        "K": 20,
+        "MeanBA": 0.6368055555555556,
+        "StdBA": 0.13204869010507833,
+        "Sensitivity": 0.6125,
+        "Valid": true
+      },
+      "KNN": {
+        "Classifier": "KNN",
+        "Ranker": "CohenD",
+        "K": 7,
+        "MeanBA": 0.6580357142857143,
+        "StdBA": 0.13247508861468463,
+        "Sensitivity": 0.6660714285714285,
+        "Valid": true
+      },
+      "RandomForest": {
+        "Classifier": "RandomForest",
+        "Ranker": "CohenD",
+        "K": 8,
+        "MeanBA": 0.6466071428571428,
+        "StdBA": 0.1078325688244277,
+        "Sensitivity": 0.5732142857142858,
+        "Valid": true
+      },
+      "NaiveBayes": {
+        "Classifier": "NaiveBayes",
+        "Ranker": "NCA",
+        "K": 32,
+        "MeanBA": 0.5881746031746032,
+        "StdBA": 0.123121050786973,
+        "Sensitivity": 0.22857142857142856,
+        "Valid": true
+      }
+    },
+    "4": {
+      "SVM": {
+        "Classifier": "SVM",
+        "Ranker": "CohenD",
+        "K": 3,
+        "MeanBA": 0.6279365079365079,
+        "StdBA": 0.09970175247900055,
+        "Sensitivity": 0.5214285714285715,
+        "Valid": true
+      },
+      "KNN": {
+        "Classifier": "KNN",
+        "Ranker": "ReliefF",
+        "K": 9,
+        "MeanBA": 0.6341071428571429,
+        "StdBA": 0.13833624776977277,
+        "Sensitivity": 0.5982142857142858,
+        "Valid": true
+      },
+      "RandomForest": {
+        "Classifier": "RandomForest",
+        "Ranker": "NCA",
+        "K": 5,
+        "MeanBA": 0.6128571428571429,
+        "StdBA": 0.09910072860766873,
+        "Sensitivity": 0.5857142857142857,
+        "Valid": true
+      },
+      "NaiveBayes": {
+        "Classifier": "NaiveBayes",
+        "Ranker": "Ttest",
+        "K": 2,
+        "MeanBA": 0.54,
+        "StdBA": 0.10202804625308778,
+        "Sensitivity": 0.15,
+        "Valid": true
+      }
+    },
+    "5": {
+      "SVM": {
+        "Classifier": "SVM",
+        "Ranker": "NCA",
+        "K": 25,
+        "MeanBA": 0.6265079365079365,
+        "StdBA": 0.13906187891453417,
+        "Sensitivity": 0.6285714285714286,
+        "Valid": true
+      },
+      "KNN": {
+        "Classifier": "KNN",
+        "Ranker": "NCA",
+        "K": 32,
+        "MeanBA": 0.6492063492063492,
+        "StdBA": 0.15559623946075932,
+        "Sensitivity": 0.6928571428571428,
+        "Valid": true
+      },
+      "RandomForest": {
+        "Classifier": "RandomForest",
+        "Ranker": "CohenD",
+        "K": 4,
+        "MeanBA": 0.6501984126984126,
+        "StdBA": 0.09778742773162508,
+        "Sensitivity": 0.6392857142857142,
+        "Valid": true
+      },
+      "NaiveBayes": {
+        "Classifier": "NaiveBayes",
+        "Ranker": "NCA",
+        "K": 17,
+        "MeanBA": 0.59875,
+        "StdBA": 0.1400337998772428,
+        "Sensitivity": 0.5875,
+        "Valid": true
+      }
+    }
+  },
+  "voting_cv": [
+    {
+      "Method": "Hard",
+      "MeanBA": 0.5978968253968254,
+      "StdBA": 0.14145343330625348,
+      "Sensitivity": 0.5535714285714286
+    },
+    {
+      "Method": "Soft",
+      "MeanBA": 0.5778174603174603,
+      "StdBA": 0.1574271307282198,
+      "Sensitivity": 0.5678571428571428
+    }
+  ],
+  "nested_choices": [
+    {
+      "OuterFold": 1,
+      "TimeClassifier": "SVM",
+      "TimeRanker": "Ttest",
+      "TimeK": 10,
+      "FrequencyClassifier": "KNN",
+      "FrequencyRanker": "ReliefF",
+      "FrequencyK": 23,
+      "PreferTime": false
+    },
+    {
+      "OuterFold": 2,
+      "TimeClassifier": "SVM",
+      "TimeRanker": "CohenD",
+      "TimeK": 8,
+      "FrequencyClassifier": "SVM",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 9,
+      "PreferTime": false
+    },
+    {
+      "OuterFold": 3,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "NCA",
+      "TimeK": 5,
+      "FrequencyClassifier": "RandomForest",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 5,
+      "PreferTime": true
+    },
+    {
+      "OuterFold": 4,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "CohenD",
+      "TimeK": 5,
+      "FrequencyClassifier": "KNN",
+      "FrequencyRanker": "ReliefF",
+      "FrequencyK": 21,
+      "PreferTime": false
+    },
+    {
+      "OuterFold": 5,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "NCA",
+      "TimeK": 5,
+      "FrequencyClassifier": "KNN",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 22,
+      "PreferTime": true
+    },
+    {
+      "OuterFold": 6,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "ReliefF",
+      "TimeK": 5,
+      "FrequencyClassifier": "KNN",
+      "FrequencyRanker": "ReliefF",
+      "FrequencyK": 15,
+      "PreferTime": false
+    },
+    {
+      "OuterFold": 7,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "NCA",
+      "TimeK": 7,
+      "FrequencyClassifier": "SVM",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 13,
+      "PreferTime": true
+    },
+    {
+      "OuterFold": 8,
+      "TimeClassifier": "RandomForest",
+      "TimeRanker": "NCA",
+      "TimeK": 5,
+      "FrequencyClassifier": "KNN",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 16,
+      "PreferTime": false
+    },
+    {
+      "OuterFold": 9,
+      "TimeClassifier": "KNN",
+      "TimeRanker": "ReliefF",
+      "TimeK": 7,
+      "FrequencyClassifier": "RandomForest",
+      "FrequencyRanker": "CohenD",
+      "FrequencyK": 15,
+      "PreferTime": true
+    },
+    {
+      "OuterFold": 10,
+      "TimeClassifier": "RandomForest",
+      "TimeRanker": "ReliefF",
+      "TimeK": 4,
+      "FrequencyClassifier": "SVM",
+      "FrequencyRanker": "NCA",
+      "FrequencyK": 12,
+      "PreferTime": false
+    }
+  ],
+  "workbooks": {
+    "25_Healthy": {
+      "rows": 49818,
+      "subjects": 121,
+      "files": 363,
+      "bad_labels": 0,
+      "duplicate_frame_keys": 0,
+      "infinite_cells": 0,
+      "nonfinite_fraction": 0.002188431005137771,
+      "training_all_missing_features": [],
+      "training_constant_features": []
+    },
+    "25_Hyperfunktionelle": {
+      "rows": 41752,
+      "subjects": 98,
+      "files": 294,
+      "bad_labels": 0,
+      "duplicate_frame_keys": 0,
+      "infinite_cells": 0,
+      "nonfinite_fraction": 0.0017506472326071555,
+      "training_all_missing_features": [],
+      "training_constant_features": []
+    },
+    "75_Healthy": {
+      "rows": 48003,
+      "subjects": 121,
+      "files": 363,
+      "bad_labels": 0,
+      "duplicate_frame_keys": 0,
+      "infinite_cells": 0,
+      "nonfinite_fraction": 0.0019097643606576914,
+      "training_all_missing_features": [],
+      "training_constant_features": []
+    },
+    "75_Hyperfunktionelle": {
+      "rows": 40282,
+      "subjects": 98,
+      "files": 294,
+      "bad_labels": 0,
+      "duplicate_frame_keys": 0,
+      "infinite_cells": 0,
+      "nonfinite_fraction": 0.003405064065778125,
+      "training_all_missing_features": [],
+      "training_constant_features": []
+    }
+  },
+  "cross_group_subject_overlap": [],
+  "gender_and_quality": {
+    "25_train_0": {
+      "subjects": 97,
+      "gender_counts": {
+        "m": 41,
+        "w": 56
+      },
+      "frames_min_median_max": [
+        180,
+        394.0,
+        999
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9981297314626251,
+      "file_counts": {
+        "3": 97
+      }
+    },
+    "25_train_1": {
+      "subjects": 78,
+      "gender_counts": {
+        "w": 45,
+        "m": 33
+      },
+      "frames_min_median_max": [
+        179,
+        438.0,
+        590
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9938811431551015,
+      "file_counts": {
+        "3": 78
+      }
+    },
+    "25_test_0": {
+      "subjects": 24,
+      "gender_counts": {
+        "m": 11,
+        "w": 13
+      },
+      "frames_min_median_max": [
+        226,
+        373.0,
+        1230
+      ],
+      "active_mean_subject": 0.9903052805280529,
+      "voiced_mean_subject": 0.9693268143939209,
+      "file_counts": {
+        "3": 24
+      }
+    },
+    "25_test_1": {
+      "subjects": 20,
+      "gender_counts": {
+        "w": 15,
+        "m": 5
+      },
+      "frames_min_median_max": [
+        165,
+        464.5,
+        590
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9985843632717574,
+      "file_counts": {
+        "3": 20
+      }
+    },
+    "75_train_0": {
+      "subjects": 97,
+      "gender_counts": {
+        "m": 41,
+        "w": 56
+      },
+      "frames_min_median_max": [
+        165,
+        379.0,
+        984
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9998477220512861,
+      "file_counts": {
+        "3": 97
+      }
+    },
+    "75_train_1": {
+      "subjects": 78,
+      "gender_counts": {
+        "w": 45,
+        "m": 33
+      },
+      "frames_min_median_max": [
+        164,
+        423.0,
+        575
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9793949366793657,
+      "file_counts": {
+        "3": 78
+      }
+    },
+    "75_test_0": {
+      "subjects": 24,
+      "gender_counts": {
+        "m": 11,
+        "w": 13
+      },
+      "frames_min_median_max": [
+        211,
+        358.0,
+        1215
+      ],
+      "active_mean_subject": 0.9931448157669237,
+      "voiced_mean_subject": 0.9666117240997737,
+      "file_counts": {
+        "3": 24
+      }
+    },
+    "75_test_1": {
+      "subjects": 20,
+      "gender_counts": {
+        "w": 15,
+        "m": 5
+      },
+      "frames_min_median_max": [
+        150,
+        449.5,
+        575
+      ],
+      "active_mean_subject": 1.0,
+      "voiced_mean_subject": 0.9971161661027841,
+      "file_counts": {
+        "3": 20
+      }
+    }
+  },
+  "nested_training_oof": {
+    "HardPrediction": {
+      "sensitivity": 0.5512820512820513,
+      "specificity": 0.6391752577319587,
+      "balanced_accuracy": 0.595228654507005,
+      "FN": 35,
+      "FP": 35
+    },
+    "SoftPrediction": {
+      "sensitivity": 0.5641025641025641,
+      "specificity": 0.5876288659793815,
+      "balanced_accuracy": 0.5758657150409727,
+      "FN": 34,
+      "FP": 40
+    }
+  },
+  "existing_test_score_diagnostics": {
+    "S1_25ms_Probability": {
+      "AUC": 0.6354166666666666,
+      "healthy_mean": 0.40006805589182287,
+      "patient_mean": 0.49106744756974197
+    },
+    "S2_75ms_Probability": {
+      "AUC": 0.6000000000000001,
+      "healthy_mean": 0.4015250366148755,
+      "patient_mean": 0.45704556566849347
+    },
+    "S3A_Hybrid_Probability": {
+      "AUC": 0.6208333333333333,
+      "healthy_mean": 0.3959678454782374,
+      "patient_mean": 0.4614320954291533
+    },
+    "Time25_Branch_Probability": {
+      "AUC": 0.66875,
+      "healthy_mean": 0.4477092612642153,
+      "patient_mean": 0.502354743151727
+    },
+    "Frequency75_Branch_Probability": {
+      "AUC": 0.7229166666666667,
+      "healthy_mean": 0.36190788096622134,
+      "patient_mean": 0.5004433503679873
+    }
+  }
+}
