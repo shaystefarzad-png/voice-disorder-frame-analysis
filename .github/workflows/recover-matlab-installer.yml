@@ -1,0 +1,41 @@
+name: Recover isolated MATLAB installer failures
+on:
+  workflow_run:
+    workflows: ['Voice research full training and final evaluation']
+    types: [completed]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  recover:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Retry infrastructure failures only; never hide model errors
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}` || run.head_branch !== 'main') {
+              core.notice('Only trusted main-branch research runs are eligible.'); return;
+            }
+            if (run.run_attempt >= 4) {
+              core.warning('Automatic installation recovery limit reached; preserve all evidence for inspection.'); return;
+            }
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo, run_id: run.id, filter: 'latest', per_page: 100
+            });
+            const failed = jobs.filter(j => j.conclusion === 'failure');
+            const eligible = failed.length > 0 && failed.every(j => {
+              const errors = (j.steps || []).filter(s => s.conclusion === 'failure');
+              const installerFailed = errors.length === 1 && errors[0].name.includes('matlab-actions/setup-matlab');
+              const fittingStarted = (j.steps || []).some(s => s.name.startsWith('Fit two grouped CV folds') && s.conclusion !== 'skipped');
+              return installerFailed && !fittingStarted;
+            });
+            if (!eligible) {
+              core.warning('Failure is not confined to MATLAB installation. No automatic model retraining requested.'); return;
+            }
+            await github.rest.actions.reRunWorkflowFailedJobs({...context.repo, run_id: run.id});
+            await core.summary.addHeading('Isolated MATLAB installation recovery')
+              .addRaw(`Requested retry of ${failed.length} failed installation job(s) and dependent stages. Successful training jobs are preserved.`).write();
