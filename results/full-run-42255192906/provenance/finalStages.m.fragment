@@ -1,0 +1,271 @@
+function ciStage()
+cfg=ciConfig();stage=string(getenv('VOICE_STAGE'));job=jsondecode(getenv('VOICE_JOB'));
+switch stage
+    case "prepare",ciPrepare(cfg,job.d);
+    case "folds",ciFolds(cfg,job);
+    case "select",ciSelect(cfg,job.d);
+    case "evaluate",ciEvaluate(cfg,job.d);
+    case "aggregate",ciAggregate(cfg);
+    case "smoke",ciSmoke();
+    otherwise,error('Unknown CI stage.');
+end
+end
+
+function cfg=ciConfig()
+cfg=configuration();cfg.InputDir=getenv('VOICE_FEATURE_DIR');cfg.OutputDir=getenv('VOICE_OUTPUT_DIR');
+assert(~isempty(cfg.InputDir) && ~isempty(cfg.OutputDir));
+if strcmp(getenv('VOICE_CI_SMOKE'),'1')
+    cfg.QuickTest=true;cfg.MaxFolds=2;cfg.NumTrees=8;cfg.NCAIterations=10;
+    cfg.MaxTrainFramesPerSubject=9;cfg.Bootstrap=100;cfg.Permutations=100;cfg.Diseases=cfg.Diseases(1);
+end
+cfg.Resume=true;cfg.UseParallel=true;
+assert(cfg.QuickTest || (cfg.MaxFolds==10 && isinf(cfg.MaxTrainFramesPerSubject)));
+if ~isfolder(cfg.OutputDir),mkdir(cfg.OutputDir);end
+maxNumCompThreads(1);
+end
+
+function ciPool()
+pool=gcp('nocreate');if isempty(pool),pool=parpool('local',2);end
+assert(pool.NumWorkers==2);
+end
+
+function file=ciPrepFile(d)
+file=fullfile(getenv('VOICE_PREP_DIR'),sprintf('d%d',d),'prepared.mat');
+end
+
+function ciPrepare(cfg,d)
+names=featureNames();disease=cfg.Diseases(d);
+h=loadPair(cfg,"Healthy",0,names);p=loadPair(cfg,disease,1,names);
+assert(isempty(intersect(unique(h.A.SubjectID),unique(p.A.SubjectID))));
+files=[featurePath(cfg,25,"Healthy"),featurePath(cfg,75,"Healthy"),featurePath(cfg,25,disease),featurePath(cfg,75,disease)];
+prep=struct('Healthy',h,'Patient',p,'Disease',disease,'Names',names,'Config',cfg, ...
+    'Signature',runSignature(cfg,files),'SourceHash',fileSHA(string(mfilename('fullpath'))+".m"));
+[D,cohort,~]=ciData(prep); %#ok<ASGLU>
+assert(~any(cohort.Train & cohort.Test) && all(cohort.Train | cohort.Test));
+assert(height(cohort)==numel(unique(cohort.SubjectID)));
+prep.Cohort=cohort;
+atomicSave(ciPrepFile(d),'prep',prep);
+folder=fileparts(ciPrepFile(d));writetable(cohort,fullfile(folder,'Frozen_Subject_Split.xlsx'));
+writetable([h.Log;p.Log],fullfile(folder,'Matching.xlsx'));
+protocol=struct('Disease',disease,'Seed',cfg.Seed,'QuickTest',cfg.QuickTest, ...
+    'MaxFolds',cfg.MaxFolds,'AllTrainingFrames',isinf(cfg.MaxTrainFramesPerSubject), ...
+    'SVMBackend',cfg.SVMBackend,'SourceHash',prep.SourceHash,'Signature',prep.Signature,'TestEvaluated',false);
+fid=fopen(fullfile(folder,'Protocol.json'),'w');fwrite(fid,jsonencode(protocol),'char');fclose(fid);
+fprintf('PREPARED d=%d subjects=%d training=%d test=%d; NO TEST PREDICTIONS\n',d,height(cohort),sum(cohort.Train),sum(cohort.Test));
+end
+
+function prep=ciLoad(cfg,d)
+z=load(ciPrepFile(d),'prep');prep=z.prep;
+assert(prep.Disease==cfg.Diseases(d));
+assert(strcmp(prep.SourceHash,fileSHA(string(mfilename('fullpath'))+".m")),'Source changed after preparation.');
+a=rmfield(cfg,{'Resume','UseParallel'});b=rmfield(prep.Config,{'Resume','UseParallel'});
+assert(isequaln(a,b),'Configuration changed after preparation.');
+end
+
+function [D,cohort,labels]=ciData(prep)
+h=prep.Healthy;p=prep.Patient;names=prep.Names;cfg=prep.Config;
+a=[h.A(h.IA,:);p.A(p.IA,:)];b=[h.B(h.IB,:);p.B(p.IB,:)];
+assert(isequal(a.SubjectID,b.SubjectID) && isequal(a.FileName,b.FileName));
+[ids,~,s]=unique(a.SubjectID,'sorted');y=accumarray(s,double(a.Label),[],@mean);
+[train,test]=holdoutSubjects(y,cfg.TestFraction,cfg.Seed);fold=zeros(numel(ids),1);
+fold(train)=groupFolds(y(train),cfg.MaxFolds,cfg.Seed+1);
+cohort=table(ids,y,train,test,fold,'VariableNames',{'SubjectID','Label','Train','Test','Fold'});
+x=double(a{:,cellstr(names.All)});z=double(b{:,cellstr(names.All)});
+D={makeData(x,s,y,ids,names.All);makeData(z,s,y,ids,names.All); ...
+    makeData([x(:,1:10),z(:,11:43)],s,y,ids,["T25_"+names.Time,"F75_"+names.Frequency]); ...
+    makeData(x(:,1:10),s,y,ids,"T25_"+names.Time);makeData(z(:,11:43),s,y,ids,"F75_"+names.Frequency)};
+labels=["S1_25ms","S2_75ms","S3A_Hybrid","Time25_Branch","Frequency75_Branch"];
+end
+
+function cache=ciCache(cfg,prep)
+cache=fullfile(cfg.OutputDir,safeName(prep.Disease),['cache_' char(prep.Signature)]);
+end
+
+function ciFolds(cfg,job)
+prep=ciLoad(cfg,job.d);[D,cohort,labels]=ciData(prep);
+assert(isequaln(cohort,prep.Cohort));cache=ciCache(cfg,prep);
+data=D{job.scenario};ids=find(cohort.Train);fold=cohort.Fold(ids);outerReserved=[];
+if job.outer==0
+    folder=fullfile(cache,char(labels(job.scenario)));seed=cfg.Seed+100*job.scenario;
+else
+    assert(ismember(job.scenario,[4,5]));outer=cohort.Fold(ids);
+    outerReserved=ids(outer==job.outer);ids=ids(outer~=job.outer);
+    fold=groupFolds(data.Y(ids),cfg.MaxFolds,cfg.Seed+20000+job.outer);
+    if job.scenario==4,branch='Time';seed=cfg.Seed+30000+job.outer;
+    else,branch='Frequency';seed=cfg.Seed+40000+job.outer;end
+    folder=fullfile(cache,'Voting',sprintf('Outer_%02d_%s',job.outer,branch));
+end
+if ~isfolder(folder),mkdir(folder);end
+candidates=candidateTable(cfg,size(data.X,2));tasks=(2*job.batch-1):min(2*job.batch,max(fold));
+assert(~isempty(tasks));ciPool();
+parfor t=1:numel(tasks)
+    k=tasks(t);file=fullfile(folder,sprintf('Fold_%02d.mat',k));part=[];
+    if isfile(file)
+        old=load(file,'part');
+        if isfield(old.part,'ProtocolSignature') && strcmp(old.part.ProtocolSignature,prep.Signature) && all(isfinite(old.part.BA))
+            part=old.part;
+        end
+    end
+    if isempty(part)
+        part=evaluateFold(data,ids,fold,k,candidates,cfg,seed+k,string(file)+".partial");
+        tr=ids(fold~=k);va=ids(fold==k);
+        assert(~any(cohort.Test([tr;va])) && isempty(intersect(tr,va)));
+        assert(isempty(intersect([tr;va],outerReserved)));
+        part.ProtocolSignature=prep.Signature;
+        part.Meta=struct('Disease',prep.Disease,'Scenario',job.scenario,'Outer',job.outer,'Fold',k, ...
+            'TrainingSubjects',data.IDs(tr),'ValidationSubjects',data.IDs(va),'TestEvaluated',false);
+        atomicSave(file,'part',part);
+    end
+    if ~all(isfinite(part.BA))
+        reasons=unique(string(part.Failures.Error),'stable');
+        error('Required candidate failure: %s',strjoin(reasons(1:min(8,numel(reasons)))," | "));
+    end
+end
+fprintf('CV_COMPLETE d=%d scenario=%d outer=%d batch=%d; TEST UNTOUCHED\n',job.d,job.scenario,job.outer,job.batch);
+end
+
+function [searches,vote,selection]=ciTrainingChoices(cfg,prep,D,cohort,labels,cache)
+files=dir(fullfile(cache,'**','Fold_*.mat'));assert(~isempty(files));
+for j=1:numel(files)
+    z=load(fullfile(files(j).folder,files(j).name),'part');
+    assert(strcmp(z.part.ProtocolSignature,prep.Signature));
+    assert(~z.part.Meta.TestEvaluated);
+    held=cohort.SubjectID(cohort.Test);
+    assert(isempty(intersect(held,z.part.Meta.TrainingSubjects)) && isempty(intersect(held,z.part.Meta.ValidationSubjects)));
+end
+% Never allow searchCV to silently compute a missing shard in this phase.
+for s=1:5
+    for k=1:max(cohort.Fold)
+        assert(isfile(fullfile(cache,char(labels(s)),sprintf('Fold_%02d.mat',k))),'Missing main CV shard.');
+    end
+end
+for outer=1:max(cohort.Fold)
+    innerSubjects=find(cohort.Train & cohort.Fold~=outer);
+    inner=groupFolds(D{4}.Y(innerSubjects),cfg.MaxFolds,cfg.Seed+20000+outer);
+    for branch=["Time","Frequency"]
+        for k=1:max(inner)
+            assert(isfile(fullfile(cache,'Voting',sprintf('Outer_%02d_%s',outer,branch),sprintf('Fold_%02d.mat',k))), ...
+                'Missing nested CV shard.');
+        end
+    end
+end
+searches=cell(5,1);
+for s=1:5
+    searches{s}=searchCV(D{s},find(cohort.Train),cohort.Fold(cohort.Train),cfg, ...
+        fullfile(cache,char(labels(s))),cfg.Seed+100*s);
+end
+vote=selectVoting(D{4},D{5},find(cohort.Train),cohort.Fold(cohort.Train),cfg,fullfile(cache,'Voting'));
+vote.Best.K=searches{4}.Best.K+searches{5}.Best.K;
+baseline=1;if isBetter(searches{2}.Best,searches{1}.Best,cfg),baseline=2;end
+hybrid="S3A_Hybrid";if isBetter(vote.Best,searches{3}.Best,cfg),hybrid="S3B_Voting";end
+selection=struct('Baseline',labels(baseline),'PreferredHybrid',hybrid,'VotingMethod',vote.Method, ...
+    'TimeChoice',searches{4}.Best,'FrequencyChoice',searches{5}.Best,'FrozenBeforeTest',true);
+end
+
+function ciSelect(cfg,d)
+ciPool();prep=ciLoad(cfg,d);[D,cohort,labels]=ciData(prep);cache=ciCache(cfg,prep);
+[searches,vote,selection]=ciTrainingChoices(cfg,prep,D,cohort,labels,cache);
+atomicSave(fullfile(cache,'CI_SELECTION_FROZEN.mat'),'selection',selection);
+state=struct('SourceHash',prep.SourceHash,'Signature',prep.Signature,'Selection',selection, ...
+    'Searches',{searches},'Voting',vote,'TestEvaluated',false);
+for s=1:5
+    finalfile=fullfile(cache,sprintf('FinalModel_%d.mat',s));
+    if ~isfile(finalfile)
+        bundle=trainFinal(D{s},find(cohort.Train),searches{s}.Best,cfg,cfg.Seed+10000+s);
+        assert(isempty(intersect(bundle.UsedTrainingSubjects,cohort.SubjectID(cohort.Test))));
+        atomicSave(finalfile,'bundle',bundle);
+    end
+end
+atomicSave(fullfile(cache,'CI_TRAINING_STATE.mat'),'state',state);
+folder=fullfile(cfg.OutputDir,safeName(prep.Disease));
+choices=table();for s=1:5
+    q=struct2table(searches{s}.Best);q.Scenario=labels(s);choices=[choices;q]; %#ok<AGROW>
+end
+writetable(choices,fullfile(folder,'Training_Choices_Frozen.xlsx'));
+fprintf('TRAINING_SELECTION_FROZEN d=%d; TEST HAS NOT BEEN PREDICTED\n',d);
+end
+
+function ciEvaluate(cfg,d)
+ciPool();prep=ciLoad(cfg,d);cache=ciCache(cfg,prep);
+z=load(fullfile(cache,'CI_TRAINING_STATE.mat'),'state');state=z.state;
+assert(~state.TestEvaluated && state.Selection.FrozenBeforeTest);
+assert(strcmp(state.SourceHash,prep.SourceHash) && strcmp(state.Signature,prep.Signature));
+folder=fullfile(cfg.OutputDir,safeName(prep.Disease));
+completed=fullfile(folder,'FINAL_RESULT.mat');
+if isfile(completed)
+    done=load(completed,'result');
+    assert(strcmp(done.result.Signature,prep.Signature));
+    assert(isequaln(done.result.Selection,state.Selection));
+    exportDisease(done.result,folder);
+    fprintf('REUSED_COMPLETED_FINAL_EVALUATION d=%d; NO NEW TEST PREDICTIONS\n',d);
+    return
+end
+started=tic;
+result=runDisease(cfg,prep.Healthy,prep.Patient,prep.Disease,prep.Names,cache);
+assert(isequaln(result.Selection,state.Selection),'Frozen training selection changed.');
+result.Signature=prep.Signature;result.Seconds=toc(started);
+folder=fullfile(cfg.OutputDir,safeName(prep.Disease));exportDisease(result,folder);
+atomicSave(fullfile(folder,'FINAL_RESULT.mat'),'result',result);
+fprintf('FINAL_TEST_EVALUATION_COMPLETE d=%d test_subjects=%d\n',d,height(result.Predictions));
+end
+
+function ciAggregate(cfg)
+results=cell(numel(cfg.Diseases),1);runlog=table();
+for d=1:numel(cfg.Diseases)
+    file=fullfile(cfg.OutputDir,safeName(cfg.Diseases(d)),'FINAL_RESULT.mat');
+    assert(isfile(file),'Missing final disease result: %s',cfg.Diseases(d));
+    z=load(file,'result');results{d}=z.result;
+    assert(~z.result.QuickTest || cfg.QuickTest);
+    q=table(cfg.Diseases(d),"Completed",string(z.result.Signature),'VariableNames',{'Disease','Status','Detail'});
+    runlog=[runlog;q]; %#ok<AGROW>
+end
+exportSummary(results,cfg,runlog);statisticalReport(results,cfg);
+fprintf('ALL_DISEASES_AND_PAIRED_STATISTICS_COMPLETE\n');
+end
+
+function ciSmoke()
+root=getenv('GITHUB_WORKSPACE');work=fullfile(getenv('RUNNER_TEMP'),'stage-smoke');
+input=fullfile(work,'Features');if ~isfolder(input),mkdir(input);end
+ciSyntheticInput(input);
+setenv('VOICE_CI_SMOKE','1');setenv('VOICE_FEATURE_DIR',input);
+setenv('VOICE_OUTPUT_DIR',fullfile(root,'stage-smoke-results'));setenv('VOICE_PREP_DIR',fullfile(work,'prepared'));
+cfg=ciConfig();ciPrepare(cfg,1);
+for s=1:5,ciFolds(cfg,struct('d',1,'scenario',s,'outer',0,'batch',1));end
+for outer=1:2
+    for s=4:5,ciFolds(cfg,struct('d',1,'scenario',s,'outer',outer,'batch',1));end
+end
+ciSelect(cfg,1);ciEvaluate(cfg,1);ciAggregate(cfg);
+t=readtable(fullfile(cfg.OutputDir,'All_Diseases_Summary.xlsx'),'Sheet','Summary');assert(height(t)==4);
+p=readtable(fullfile(cfg.OutputDir,'Rekurrensparese','Rekurrensparese_Results.xlsx'),'Sheet','SubjectPredictions');
+assert(height(p)==12);
+s=readtable(fullfile(cfg.OutputDir,'Statistical_Hypothesis_Validation.xlsx'),'Sheet','PerDisease');
+assert(height(s)==2 && ~any(s.HypothesisSupported));
+fprintf('DISTRIBUTED_STAGE_SMOKE_PASSED\n');
+end
+
+function ciSyntheticInput(input)
+names=featureNames();rng(1405,'twister');
+for label=0:1
+    group="Healthy";if label,group="Rekurrensparese";end
+    short=table();long=table();
+    for person=1:30
+        id=string(1000+1000*label+person);u=randn(1,43);
+        for vowel=["a","i","u"]
+            for ms=[25,75]
+                n=12;offset=.01246875;if ms==75,n=7;offset=.03746875;end
+                start=(0:n-1)'*.01;file=group+"_"+id+"-"+vowel+"_n";
+                x=.5*u+.8*randn(n,43)+.4*label;x(rand(size(x))<.015)=NaN;
+                t=table(repmat(file,n,1),repmat(id,n,1),repmat(vowel,n,1),repmat(label,n,1), ...
+                    repmat("synthetic",n,1),repmat(group,n,1),(1:n)',start,start+offset, ...
+                    true(n,1),true(n,1),ones(n,1),'VariableNames',{'FileName','SubjectID','Vowel', ...
+                    'Label','Gender','Disease','FrameID','FrameStartTime','FrameCenterTime', ...
+                    'IsActive','IsVoiced','VoicingConfidence'});
+                t=[t,array2table(x,'VariableNames',cellstr(names.All))];
+                if ms==25,short=[short;t];else,long=[long;t];end %#ok<AGROW>
+            end
+        end
+    end
+    writetable(short,fullfile(input,"FullFeats_25ms_"+group+".xlsx"));
+    writetable(long,fullfile(input,"FullFeats_75ms_"+group+".xlsx"));
+end
+end

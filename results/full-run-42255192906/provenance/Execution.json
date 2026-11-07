@@ -1,0 +1,11 @@
+{
+  "run_id": "42255192906",
+  "source_commit": "b448d6ac9979bde4899159e74b3fe30e4bf5bb3a",
+  "diseases": 6,
+  "quick_test": false,
+  "primary_cv_folds": 10,
+  "nested_voting_cv_folds": 10,
+  "all_training_frames": true,
+  "svm": "linear hinge-loss SVM; equivalent validated scalable dual solver",
+  "test_after_all_training_frozen": true
+}

@@ -1,0 +1,82 @@
+[
+  {
+    "name": "FullFeats_25ms_Stimmlippenpolyp.xlsx",
+    "bytes": 10407556,
+    "sha256": "a57446b42c119c455fc7b6dce6c974aa24676272c355102a539156f587b0944a"
+  },
+  {
+    "name": "FullFeats_75ms_Healthy.xlsx",
+    "bytes": 30744738,
+    "sha256": "536a8e22da4135e4a6b732d954c1f4f010434a42e459a96c2c0bff1e24a651cb"
+  },
+  {
+    "name": "FullFeats_75ms_Spasmodische Dysphonie.xlsx",
+    "bytes": 14504532,
+    "sha256": "baab5f19d84f569bfce53902423fff3d521cb12c7139aa33c1aaef267eeceb74"
+  },
+  {
+    "name": "FullFeats_25ms_Hyperfunktionelle.xlsx",
+    "bytes": 26759095,
+    "sha256": "d3f843f9f2d9c20a3c370257975600b225b89826d2d69cbcc6cccbd0cb0a8dfc"
+  },
+  {
+    "name": "FullFeats_75ms_Reinke Ödem.xlsx",
+    "bytes": 13192347,
+    "sha256": "cf3156f9e3161707218adc44ec4140a3071ed7c0987cba6a9966d349f57b6691"
+  },
+  {
+    "name": "FullFeats_75ms_Stimmlippenpolyp.xlsx",
+    "bytes": 9963473,
+    "sha256": "4eb18e06506cbac30df4e35921af41d8898233cd7395c6f5a7056b16c9ac6b37"
+  },
+  {
+    "name": "FullFeats_25ms_Reinke Ödem.xlsx",
+    "bytes": 13782833,
+    "sha256": "1a5b980aef11eba1b60e616c0526f6432ab3398dbf86c307b0a5c6590889dee2"
+  },
+  {
+    "name": "FullFeats_25ms_Healthy.xlsx",
+    "bytes": 31938790,
+    "sha256": "86b3a70e3ec08ec6b89699f76c983fbeed75b1355acad0db8f962f722ded257a"
+  },
+  {
+    "name": "FullFeats_75ms_Hyperfunktionelle.xlsx",
+    "bytes": 25763270,
+    "sha256": "d41f623b96de9f64e69418b3f3f9eaf15921844d74e0446430522d8a07397c7a"
+  },
+  {
+    "name": "FullFeats_25ms_Laryngitis.xlsx",
+    "bytes": 26724423,
+    "sha256": "27bcfd6e1d88c26cdbb1278f59fcc8ebcf8a3a0a4b396319ec4c035e444728bb"
+  },
+  {
+    "name": "FullFeats_25ms_Rekurrensparese.xlsx",
+    "bytes": 30026625,
+    "sha256": "722015ea470e59d9c62a867e3d6121bf46b5e06d5ef2aec7cd5ea6409f8f70e3"
+  },
+  {
+    "name": "FullFeats_25ms_Spasmodische Dysphonie.xlsx",
+    "bytes": 15222214,
+    "sha256": "1a050b0ef694c8b37c59642e4ea0d7fa300138fc6e4cc40e692f07714b9354de"
+  },
+  {
+    "name": "FullFeats_75ms_Laryngitis.xlsx",
+    "bytes": 25619066,
+    "sha256": "a18b61c2601a1509c98d453fa10844f14218aa410dc85de735539b83fb0670ed"
+  },
+  {
+    "name": "FullFeats_75ms_Rekurrensparese.xlsx",
+    "bytes": 28707604,
+    "sha256": "3bc34671ca16993738f313eb487c8bc4a7cc2f52eda188efb02a8b12011c6ad6"
+  },
+  {
+    "name": "Feature_Extraction_QC.xlsx",
+    "bytes": 4562,
+    "sha256": "6a8708d1e169a0424d4306c9bc000b6ba821f5c28183d852b18798371ce36a1d"
+  },
+  {
+    "name": "Extraction_Settings.mat",
+    "bytes": 839,
+    "sha256": "0873e52bd9f788272e2a25d649434448cbe5b0754ee8a56201cfe5df0a6b497b"
+  }
+]
