@@ -16,6 +16,12 @@ end
 csvFilePath='D:\SVD\meta\svd_wav\svd_labels_onlyN.csv';
 rootSearchFolder='D:\SVD\meta\svd_wav';
 outputWavFolder='D:\SVD\meta\svd_wav\data_NSP_Corrected';
+csvEncoding='windows-1252'; % inspected source CSV: byte D6 encodes Ö
+if ~isempty(varargin)
+    assert(numel(varargin)==1&&isstruct(varargin{1}),'Optional run settings must be one struct.');
+    c=varargin{1};csvFilePath=c.CSVPath;rootSearchFolder=c.SourceRoot;outputWavFolder=c.OutputDir;
+    if isfield(c,'CSVEncoding'),csvEncoding=c.CSVEncoding;end
+end
 allowed=["Healthy","Hyperfunktionelle","Laryngitis","Rekurrensparese", ...
     "Reinke Ödem","Spasmodische Dysphonie","Stimmlippenpolyp"];
 assert(isfile(csvFilePath),'CSV not found: %s',csvFilePath);
@@ -28,17 +34,18 @@ for j=1:numel(files)
 end
 % CSV contract supplied by the project: first three fields = path,label,gender.
 % readtable handles quoted commas; strsplit does not.
-t=readtable(csvFilePath,'FileType','text','Delimiter',',','ReadVariableNames',false,'TextType','string');
+t=readtable(csvFilePath,'FileType','text','Delimiter',',','ReadVariableNames',false,'TextType','string','Encoding',csvEncoding);
 assert(width(t)>=3,'CSV needs at least path, binary label, and gender fields.');
-rows=cell(0,9);logs=cell(0,5);seen=containers.Map('KeyType','char','ValueType','char');
+rows=cell(0,9);logs=cell(0,5);seen=containers.Map('KeyType','char','ValueType','any');
 for i=1:height(t)
     source="";destination="";
     try
-        raw=strip(string(t{i,1}));label=str2double(string(t{i,2}));gender=strip(string(t{i,3}));
+        raw=string(normalizeNSPPath(strip(string(t{i,1}))));label=str2double(string(t{i,2}));gender=lower(strip(string(t{i,3})));
         if i==1 && isnan(label) && any(strcmpi(strip(string(t{i,2})),["Label","Class","Target"]))
             logs(end+1,:)={i,"","","HeaderSkipped",""};continue; %#ok<AGROW>
         end
         assert(isscalar(label)&&ismember(label,[0,1]),'Label must be exactly 0 or 1.');
+        assert(ismember(gender,["m","w"]),'Gender must match the inspected CSV values m/w.');
         source=string(resolveNSP(raw,index));
         d1=detectNSPDisease(raw);d2=detectNSPDisease(source);
         if strlength(d1)>0 && strlength(d2)>0,assert(d1==d2,'CSV path and actual source have different diseases.');end
@@ -57,10 +64,13 @@ for i=1:height(t)
         destination=string(fullfile(outputWavFolder,char(disease+"_"+name+".wav")));
         key=lower(char(destination));
         if isKey(seen,key)
-            assert(strcmpi(seen(key),char(source)),'Two different NSP sources target the same WAV.');
-            error('Duplicate CSV recording: no extra metadata row was created.');
+            previous=seen(key);
+            assert(strcmpi(previous.Source,char(source))&&previous.Label==label&&previous.Gender==gender, ...
+                'Duplicate destination has conflicting source/label/gender.');
+            logs(end+1,:)={i,source,destination,"DuplicateCSVSkipped","Identical diagnosis/record entry already processed"};continue; %#ok<AGROW>
         end
-        [x,fs]=readNSP16(source);writeNativeWAV(destination,x,fs);seen(key)=char(source);
+        [x,fs]=readNSP16(source);writeNativeWAV(destination,x,fs);
+        seen(key)=struct('Source',char(source),'Label',label,'Gender',gender);
         rows(end+1,:)={destination,label,gender,disease,subject,vowel,source,fs,numel(x)}; %#ok<AGROW>
         logs(end+1,:)={i,source,destination,"Completed","Native sample rate; exact PCM16 payload"}; %#ok<AGROW>
     catch err
@@ -71,6 +81,7 @@ log=cell2table(logs,'VariableNames',{'CSVRow','SourceNSP','OutputWAV','Status','
 writetable(log,fullfile(outputWavFolder,'NSP_Conversion_QC.xlsx'));
 assert(~isempty(rows),'No recordings converted. Inspect NSP_Conversion_QC.xlsx.');
 T=cell2table(rows,'VariableNames',{'FilePath','Label','Gender','Disease','SubjectID','Vowel','SourceNSP','NativeSampleRate','OriginalSampleCount'});
+nspMembershipAudit(T,outputWavFolder);
 file=fullfile(outputWavFolder,'Thesis_Final_Dataset.xlsx');tmp=[tempname(outputWavFolder) '.xlsx'];
 writetable(T,tmp);movefile(tmp,file,'f');
 fprintf('Converted/verified %d recordings. Metadata: %s\n',height(T),file);
@@ -124,10 +135,17 @@ key=lower(regexprep(char(name),'[\s_-]',''));
 end
 
 function path=resolveNSP(raw,index)
-raw=char(raw);[~,name,ext]=fileparts(raw);
+raw=normalizeNSPPath(raw);[folder,name,ext]=fileparts(raw);
 if strcmpi(ext,'.nsp')&&isfile(raw),path=raw;return;end
+% Source CSV points at WAV paths. Prefer its own folder's NSP before basename search.
+sibling=fullfile(folder,[name '.nsp']);if isfile(sibling),path=sibling;return;end
 key=nspNameKey(name);assert(isKey(index,key),'No source NSP matches the CSV basename.');
-q=index(key);assert(numel(q)==1,'Ambiguous NSP basename: %d sources found. Use an exact source path in CSV.',numel(q));path=q{1};
+q=index(key);intended=detectNSPDisease(raw);
+if numel(q)>1 && strlength(intended)>0
+    keep=false(size(q));for j=1:numel(q),keep(j)=detectNSPDisease(q{j})==intended;end
+    q=q(keep);
+end
+assert(numel(q)==1,'Ambiguous/unresolved NSP basename after diagnosis matching: %d sources. Use an exact source path in CSV.',numel(q));path=q{1};
 end
 
 function disease=detectNSPDisease(path)
@@ -160,6 +178,7 @@ index=containers.Map('KeyType','char','ValueType','any');index(nspNameKey('106-a
 failed=false;try,resolveNSP('unknown/106-a_n.nsp',index);catch,failed=true;end;assert(failed,'Ambiguous basename was accepted.');
 assert(strlength(detectNSPDisease('D:/Abnormal/106-a_n.nsp'))==0);
 assert(detectNSPDisease('D:/Hyperfunktionelle/106-a_n.nsp')=="Hyperfunktionelle");
+nspCSVSelfTest(folder,x,fs);
 fprintf('NSP_PARSER_EXACT_PCM_WAV_AND_AMBIGUITY_CHECKS_PASSED\n');
 end
 
@@ -169,4 +188,49 @@ fwrite(fid,'FORMDS16','char');fwrite(fid,48+2*numel(x),'uint32');
 fwrite(fid,'HEDR','char');fwrite(fid,32,'uint32');fwrite(fid,'Jan 01 00:00:00 2000','char');
 fwrite(fid,fs,'uint32');fwrite(fid,declaredCount,'uint32');fwrite(fid,[32767,-1],'int16');
 fwrite(fid,'SDA_','char');fwrite(fid,2*numel(x),'uint32');fwrite(fid,x,'int16');
+end
+
+
+function path=normalizeNSPPath(path)
+path=strrep(char(path),'\','/');unc=startsWith(path,'//');path=regexprep(path,'/+','/');
+if unc,path=['/' path];end
+end
+
+function nspMembershipAudit(T,folder)
+ids=unique(string(T.SubjectID),'stable');audit=table();
+for j=1:numel(ids)
+    q=string(T.Disease(string(T.SubjectID)==ids(j)));q=unique(q,'stable');
+    a=table(ids(j),strjoin(q," | "),numel(q),numel(q)>1, ...
+        'VariableNames',{'SubjectID','CSV_Diseases','DiseaseMembershipCount','NeedsClinicalReview'});
+    audit=[audit;a]; %#ok<AGROW>
+end
+writetable(audit,fullfile(folder,'DiagnosisMembership_QC.xlsx'));
+fprintf('Multiple-diagnosis memberships preserved for %d subjects; review against original clinical metadata.\n',sum(audit.NeedsClinicalReview));
+end
+
+function nspCSVSelfTest(folder,x,fs)
+% Integration regression for the real CSV schema, duplicate names and Ö encoding.
+source=fullfile(folder,'csv-source');output=fullfile(folder,'csv-output');mkdir(source);
+csv=fullfile(folder,'labels.csv');fid=fopen(csv,'wt','n','windows-1252');assert(fid>=0);
+fprintf(fid,'filepath,label,gender\n');
+groups=["Healthy","Rekurrensparese","Reinke Ödem"];ids=["1","106","106"];
+first="";
+for d=1:3
+    sub=fullfile(source,char(groups(d)),char(ids(d)),'vowels');mkdir(sub);
+    for vowel=["a","i","u"]
+        name=ids(d)+"-"+vowel+"_n";file=fullfile(sub,char(name+".nsp"));writeSyntheticNSP(file,x,fs,numel(x));
+        raw=string(fullfile(sub,char(name+".wav")));label=double(d>1);fprintf(fid,'%s,%d,w\n',raw,label);
+        if d==1 && vowel=="a",first=raw;end
+    end
+end
+fprintf(fid,'%s,0,w\n',first);fclose(fid);
+settings=struct('CSVPath',csv,'SourceRoot',source,'OutputDir',output,'CSVEncoding','windows-1252');
+NSP_to_WAV_Corrected("run",settings);
+t=readtable(fullfile(output,'Thesis_Final_Dataset.xlsx'),'TextType','string');
+assert(height(t)==9 && sum(t.Disease=="Healthy")==3 && sum(t.Disease=="Reinke Ödem")==3 && sum(t.Disease=="Rekurrensparese")==3);
+q=readtable(fullfile(output,'DiagnosisMembership_QC.xlsx'),'TextType','string');
+assert(q.DiseaseMembershipCount(string(q.SubjectID)=="106")==2);
+q=readtable(fullfile(output,'NSP_Conversion_QC.xlsx'),'TextType','string');
+assert(sum(q.Status=="DuplicateCSVSkipped")==1 && ~any(q.Status=="Failed"));
+fprintf('CSV_ENCODING_DUPLICATE_AND_MULTIPLE_DIAGNOSIS_CHECKS_PASSED\n');
 end
