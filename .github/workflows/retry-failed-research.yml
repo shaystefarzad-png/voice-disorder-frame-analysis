@@ -1,0 +1,19 @@
+name: Retry only failed research job and dependent stages
+on:
+  push:
+    paths:
+      - .github/workflows/retry-failed-research.yml
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  retry:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Retry MATLAB installation failure without repeating completed CV jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST repos/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42255192906/rerun-failed-jobs
