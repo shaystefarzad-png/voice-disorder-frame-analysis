@@ -1,0 +1,25 @@
+name: Verify NSP container conversion without uploading recordings
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - NSP_to_WAV_Corrected.m
+      - .github/workflows/nsp-converter-check.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+      - uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            try, NSP_to_WAV_Corrected("selftest");
+            catch err, r=getReport(err,'extended','hyperlinks','off');
+            r=strrep(strrep(strrep(r,'%','%25'),char(13),'%0D'),char(10),'%0A');
+            fprintf(2,'::error title=NSP conversion regression::%s\n',r); rethrow(err); end
