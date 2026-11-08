@@ -1,0 +1,86 @@
+name: Approved full training on audited CycleOrProxy43
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ci/approved-training-request.json
+      - runApprovedTraining.m
+      - .github/workflows/approved-full-training.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: approved-full-training
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify unchanged model behavior and active-disease routing
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runSyntheticWorkflow
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-training-validation
+          path: synthetic-test-artifacts/
+          retention-days: 30
+  train:
+    needs: validate
+    name: Train disease ${{ matrix.d }} without Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_DISEASE_INDEX: ${{ matrix.d }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read optional resume request
+        id: request
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          request=json.loads(Path('ci/approved-training-request.json').read_text())
+          run=str(request.get('resume_run_id',''))
+          assert not run or run.isdigit()
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write('resume_id='+run+'\n')
+          PY
+      - name: Restore prior disease checkpoints if requested
+        if: steps.request.outputs.resume_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-training-d${{ matrix.d }}
+          path: approved-training-results/disease_${{ matrix.d }}/
+          run-id: ${{ steps.request.outputs.resume_id }}
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Full training and feature selection without Test predictions
+        timeout-minutes: 320
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runApprovedTraining
+      - name: Preserve all completed folds and partial candidate checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-training-d${{ matrix.d }}
+          path: approved-training-results/disease_${{ matrix.d }}/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1

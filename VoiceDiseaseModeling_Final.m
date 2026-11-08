@@ -15,6 +15,7 @@ if nargin>0
     end
 end
 cfg.Diseases=reshape(string(cfg.Diseases),1,[]);
+assert(strlength(string(cfg.ActiveDisease))==0||ismember(string(cfg.ActiveDisease),cfg.Diseases),'ActiveDisease is outside the planned disease list.');
 cfg.Classifiers=reshape(string(cfg.Classifiers),1,[]);cfg.Rankers=reshape(string(cfg.Rankers),1,[]);
 assert(ismember(cfg.Stage,["all","training","benchmark"]),'Invalid Stage.');
 rng(cfg.Seed,'twister');
@@ -42,7 +43,9 @@ results = cell(numel(cfg.Diseases),1);
 runlog = table('Size',[0 3],'VariableTypes',{'string','string','string'}, ...
     'VariableNames',{'Disease','Status','Detail'});
 for d = 1:numel(cfg.Diseases)
-    disease = cfg.Diseases(d); started = tic;
+    disease = cfg.Diseases(d);
+    if strlength(string(cfg.ActiveDisease))>0 && disease~=string(cfg.ActiveDisease),continue;end
+    started = tic;
     diseaseDir = fullfile(cfg.OutputDir,safeName(disease));
     if ~isfolder(diseaseDir), mkdir(diseaseDir); end
     files = [featurePath(cfg,25,"Healthy"),featurePath(cfg,75,"Healthy"), ...
@@ -118,6 +121,7 @@ cfg.TimeToleranceSec=.0051; cfg.EqualityTolerance=1e-10;
 cfg.ProtocolVersion='audited-cycle43-seven-models-adaptive-equalK-v6';
 cfg.IncludeAdaptive=true; cfg.IncludeEqualCount=true;
 cfg.Stage="all"; % all | training (never predicts Test) | benchmark (training only)
+cfg.ActiveDisease=""; % Optional execution routing; preserves the full planned disease family.
 cfg.KernelCacheMB=256;
 end
 
@@ -1364,7 +1368,7 @@ end
 function sig=runSignature(cfg,files)
 % Content hashing prevents reuse after a same-size/timestamp Excel change.
 % Includes THIS source file, so altered logic cannot reuse old checkpoints.
-copy=cfg; copy=rmfield(copy,{'Resume','UseParallel','OutputDir','Stage'});
+copy=cfg; copy=rmfield(copy,{'Resume','UseParallel','OutputDir','Stage','ActiveDisease'});
 payload=jsonencode(copy);
 for j=1:numel(files), payload=[payload '|' fileSHA(files(j))]; end %#ok<AGROW>
 payload=[payload '|' fileSHA(string(mfilename('fullpath'))+".m")];

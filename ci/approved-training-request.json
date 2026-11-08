@@ -1,0 +1,12 @@
+{
+  "request": "2026-11-09-start-approved-full-training",
+  "resume_run_id": "",
+  "stage": "training_only",
+  "quick_test": false,
+  "training_frame_cap": "Inf",
+  "max_folds": 10,
+  "classifiers": ["SVM_Linear", "SVM_Quadratic", "SVM_RBF", "KNN3", "KNN5", "RandomForest", "NaiveBayes"],
+  "include_adaptive": true,
+  "include_equal_count": true,
+  "test_evaluation": false
+}

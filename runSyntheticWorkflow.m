@@ -7,7 +7,7 @@ if ~isfolder(artifacts), mkdir(artifacts); end
 work=tempname; mkdir(work); input=fullfile(work,'Features'); mkdir(input);
 output=fullfile(artifacts,'ModelResults');
 rng(1405,'twister');makeSyntheticExcel(input);
-overrides=struct('InputDir',input,'OutputDir',output,'Diseases',"Hyperfunktionelle", ...
+overrides=struct('InputDir',input,'OutputDir',output,'Diseases',["Hyperfunktionelle","Rekurrensparese"],'ActiveDisease',"Hyperfunktionelle", ...
     'UseParallel',true,'QuickTest',true,'Resume',true,'IncludeAdaptive',true,'IncludeEqualCount',true);
 log=evalc('VoiceDiseaseModeling_Final(overrides)');
 writeText(fullfile(artifacts,'MATLAB_execution_log.txt'),log);
