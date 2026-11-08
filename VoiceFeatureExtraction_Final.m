@@ -163,7 +163,7 @@ end
 function cfg=vfConfiguration
 cfg=struct('DatasetPath','D:\SVD\meta\svd_wav\data\Thesis_Final_Dataset.xlsx', ...
     'OutputFolder','D:\SVD\meta\svd_wav\Features_Final_CycleFallback', ...
-    'Diseases',["Healthy","Rekurrensparese","Hyperfunktionelle","Laryngitis","Reinke Ödem","Spasmodische Dysphonie","Stimmlippenpolyp"], ...
+    'Diseases',["Healthy","Rekurrensparese","Hyperfunktionelle","Laryngitis",("Reinke "+string(char(214))+"dem"),"Spasmodische Dysphonie","Stimmlippenpolyp"], ...
     'TargetFs',16000,'WindowMs',[25,75],'HopMs',10,'NFFT',2048,'PerturbRadius',2, ...
     'PerturbationMode',"cycle_with_proxy_fallback",'ProxyFallbackWindowsMs',25, ...
     'PraatPath',"",'AutoDownloadPraat',true,'PraatVersion',"",'PraatBinarySHA256',"", ...
@@ -558,8 +558,8 @@ vfAtomicTable(files,fullfile(cfg.OutputFolder,'File_Extraction_QC.xlsx'));
 end
 
 function vfInputSelfTest
-cfg=vfConfiguration();T=table(["/tmp/Healthy_1-a_n.wav";"/tmp/Rekurrensparese_106-a_n.wav";"/tmp/Reinke Ödem_106-a_n.wav"], ...
-    [0;1;1],["w";"m";"m"],["Healthy";"Rekurrensparese";"Reinke Ödem"],["1";"106";"106"],["a";"a";"a"], ...
+cfg=vfConfiguration();T=table(["/tmp/Healthy_1-a_n.wav";"/tmp/Rekurrensparese_106-a_n.wav";("/tmp/Reinke "+string(char(214))+"dem_106-a_n.wav")], ...
+    [0;1;1],["w";"m";"m"],["Healthy";"Rekurrensparese";("Reinke "+string(char(214))+"dem")],["1";"106";"106"],["a";"a";"a"], ...
     ["/tmp/h/1-a_n.nsp";"/tmp/r/106-a_n.nsp";"/tmp/e/106-a_n.nsp"],repmat(50000,3,1),repmat(50000,3,1), ...
     'VariableNames',{'FilePath','Label','Gender','Disease','SubjectID','Vowel','SourceNSP','NativeSampleRate','OriginalSampleCount'});
 [clean,audit]=vfValidateMetadata(T,cfg);assert(height(clean)==3&&sum(audit.MultipleDiseaseSubjects)==2);
@@ -791,8 +791,8 @@ assert(all(isnan(m(3,:)))&&all(isnan(m(4,:))));
 [m,~]=vfCombineCycleProxy(c,p,n,support,bad,voiced,75,cfg);assert(all(isnan(m),'all'));
 c=repmat([0,.1,.2,.3],4,1);[m,s]=vfCombineCycleProxy(c,p,n,support,bad,voiced,25,cfg);
 assert(isequal(m,c)&&all(s=="Cycle",'all'));
-base=tempname;mkdir(base);clean=onCleanup(@()vfRemoveOwnTemp(base)); %#ok<NASGU>
-work=fullfile(base,'voice check Ö space');mkdir(work);
+base=tempname;mkdir(base);cleanupHandle=onCleanup(@()vfRemoveOwnTemp(base)); %#ok<NASGU>
+work=fullfile(base,['voice check ' char(214) ' space']);mkdir(work);
 cfg.OutputFolder=fullfile(work,'features');mkdir(cfg.OutputFolder);
 [cfg.PraatPath,cfg.PraatVersion,cfg.PraatBinarySHA256]=vfEnsurePraat(cfg);
 % Independent physical oracle: an exactly periodic clean tone has nearly
@@ -808,8 +808,8 @@ modulated=fullfile(work,'modulated.wav');audiowrite(modulated,am,fs,'BitsPerSamp
 r2=vfPraatRecord(modulated,16000,cfg);q=r2.Metrics(r2.Metrics.Window_ms==75,:);
 assert(median(q.ShimmerLocal,'omitnan')>.1,'Amplitude modulation was not detected.');
 % Full extraction from native PCM/WAV metadata, with two disease memberships.
-nativeNames=["Healthy_1-a_n","Hyperfunktionelle_106-a_n","Reinke Ödem_106-a_n"];
-labels=[0;1;1];diseases=["Healthy";"Hyperfunktionelle";"Reinke Ödem"];ids=["1";"106";"106"];
+nativeNames=["Healthy_1-a_n","Hyperfunktionelle_106-a_n",("Reinke "+string(char(214))+"dem_106-a_n")];
+labels=[0;1;1];diseases=["Healthy";"Hyperfunktionelle";("Reinke "+string(char(214))+"dem")];ids=["1";"106";"106"];
 paths=strings(3,1);sources=strings(3,1);
 for j=1:3
     paths(j)=fullfile(work,nativeNames(j)+".wav");
