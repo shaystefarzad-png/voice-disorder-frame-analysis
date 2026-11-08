@@ -1,4 +1,4 @@
-function VoiceDiseaseModeling_Final
+function VoiceDiseaseModeling_Final(overrides)
 % Independent implementation for MATLAB R2023b. No previous modeling code used.
 % Run: VoiceDiseaseModeling_Final
 % Requires Statistics and Machine Learning Toolbox; Parallel Computing Toolbox
@@ -7,6 +7,14 @@ function VoiceDiseaseModeling_Final
 % unbiased performance estimates; only the untouched test supports inference.
 
 cfg = configuration();
+if nargin>0
+    fields=fieldnames(overrides);
+    for j=1:numel(fields)
+        assert(isfield(cfg,fields{j}),'Unknown configuration field %s.',fields{j});
+        cfg.(fields{j})=overrides.(fields{j});
+    end
+end
+assert(ismember(cfg.Stage,["all","training","benchmark"]),'Invalid Stage.');
 rng(cfg.Seed,'twister');
 assert(license('test','Statistics_Toolbox'), 'Statistics Toolbox is required.');
 if cfg.QuickTest
@@ -47,12 +55,16 @@ for d = 1:numel(cfg.Diseases)
     if ~isfolder(cacheDir), mkdir(cacheDir); end
     completeFile = fullfile(cacheDir,'COMPLETE.mat');
     try
-        if cfg.Resume && isfile(completeFile)
+        if cfg.Stage=="all" && cfg.Resume && isfile(completeFile)
             z=load(completeFile,'result'); result=z.result;
             exportDisease(result,diseaseDir);
         else
             patient = loadPair(cfg,disease,1,names);
             result = runDisease(cfg,healthy,patient,disease,names,cacheDir);
+            if cfg.Stage~="all"
+                runlog(end+1,:)={disease,"TrainingOnlyCompleted",sig};
+                atomicTable(runlog,fullfile(cfg.OutputDir,'Training_Status.xlsx'),'Status');continue;
+            end
             result.Signature=sig; result.Seconds=toc(started);
             exportDisease(result,diseaseDir);
             atomicSave(completeFile,'result',result);
@@ -71,6 +83,7 @@ for d = 1:numel(cfg.Diseases)
         atomicTable(runlog,fullfile(cfg.OutputDir,'Run_Status.xlsx'),'Status');
     end
 end
+if cfg.Stage~="all",return;end
 if ~any(~cellfun(@isempty,results))
     exportSummary(results,cfg,runlog);
 else
@@ -82,14 +95,14 @@ end
 end
 
 function cfg=configuration()
-cfg.InputDir = 'D:\SVD\meta\svd_wav\Features_Corrected';
-cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final';
+cfg.InputDir = 'D:\SVD\meta\svd_wav\Features_Final_CycleFallback_HNRfix';
+cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final_Approved43';
 % Edit disease membership ONLY here. Missing pairs are recorded, not invented.
 cfg.Diseases = ["Rekurrensparese","Hyperfunktionelle","Laryngitis", ...
     "Reinke Ödem","Spasmodische Dysphonie","Stimmlippenpolyp"];
 cfg.Seed=1405; cfg.UseParallel=true; cfg.QuickTest=false; cfg.Resume=true;
 cfg.TestFraction=.20; cfg.MaxFolds=10;
-cfg.Classifiers=["SVM","KNN","RandomForest","NaiveBayes"];
+cfg.Classifiers=["SVM_Linear","SVM_Quadratic","SVM_RBF","KNN3","KNN5","RandomForest","NaiveBayes"];
 cfg.Rankers=["Ttest","CohenD","ReliefF","NCA"];
 % Full mode uses every training frame. Finite values are an explicitly
 % different, resource-limited experiment and enter the checkpoint signature.
@@ -100,12 +113,15 @@ cfg.NCAIterations=60; cfg.ReliefNeighbors=10;
 cfg.CalibrationFraction=.20; % independent SUBJECT calibration for SVM
 cfg.Bootstrap=5000; cfg.Permutations=10000; cfg.Alpha=.05;
 cfg.TimeToleranceSec=.0051; cfg.EqualityTolerance=1e-10;
-cfg.ProtocolVersion='independent-2026-11-06-v4-certified-hinge';
+cfg.ProtocolVersion='audited-cycle43-seven-models-adaptive-equalK-v6';
+cfg.IncludeAdaptive=true; cfg.IncludeEqualCount=true;
+cfg.Stage="all"; % all | training (never predicts Test) | benchmark (training only)
+cfg.KernelCacheMB=256;
 end
 
 function n=featureNames()
 n.Time=["ZCR","ZCR_Var","RMS","PeakAmp","Entropy","EnergyEntropy", ...
-    "JitterProxy_local","JitterProxy_rap","ShimmerProxy_local","ShimmerProxy_apq"];
+    "JitterLocal_CycleOrProxy","JitterRAP_CycleOrProxy","ShimmerLocal_CycleOrProxy","ShimmerAPQ5_CycleOrProxy"];
 n.Frequency=["HNR","SpecCentroid","SpecRolloff","SpecFlux","SpecEntropy", ...
     "MFCC"+string(1:13),"DeltaMFCC"+string(1:13),"FormantF1","FormantF2"];
 n.All=[n.Time,n.Frequency];
@@ -225,97 +241,231 @@ end
 
 function result=runDisease(cfg,h,p,disease,names,cache)
 assert(isempty(intersect(unique(h.A.SubjectID),unique(p.A.SubjectID))), ...
-    'Healthy/patient SubjectID overlap: diagnosis/session resolution is required.');
-% Primary comparison uses identical paired rows AND identical subjects for
-% every scenario, eliminating sample-count and recording-set confounds.
-a=[h.A(h.IA,:);p.A(p.IA,:)]; b=[h.B(h.IB,:);p.B(p.IB,:)];
-assert(isequal(a.SubjectID,b.SubjectID) && isequal(a.FileName,b.FileName));
-[ids,~,s]=unique(a.SubjectID,'sorted');
-y=accumarray(s,double(a.Label),[],@mean);
-assert(all(y==0|y==1),'A subject has conflicting labels.');
+    'Healthy/patient SubjectID overlap.');
+a=[h.A(h.IA,:);p.A(p.IA,:)];b=[h.B(h.IB,:);p.B(p.IB,:)];
+assert(isequal(a.SubjectID,b.SubjectID)&&isequal(a.FileName,b.FileName));
+[ids,~,s]=unique(a.SubjectID,'sorted');y=accumarray(s,double(a.Label),[],@mean);
+assert(all(y==0|y==1),'Conflicting subject labels.');
 [train,test]=holdoutSubjects(y,cfg.TestFraction,cfg.Seed);
-assert(~any(train & test) && all(train | test));
-fold=zeros(numel(ids),1); fold(train)=groupFolds(y(train),cfg.MaxFolds,cfg.Seed+1);
+fold=zeros(numel(ids),1);fold(train)=groupFolds(y(train),cfg.MaxFolds,cfg.Seed+1);
 cohort=table(ids,y,train,test,fold,'VariableNames',{'SubjectID','Label','Train','Test','Fold'});
 excluded=excludedSubjects(h,p,ids);
 atomicTable([h.Log;p.Log],fullfile(cache,'Matching.xlsx'),'Matching');
 atomicTable(cohort,fullfile(cache,'SubjectSplit.xlsx'),'SubjectSplit');
 atomicTable(excluded,fullfile(cache,'ExcludedSubjects.xlsx'),'Excluded');
-X25=double(a{:,cellstr(names.All)}); X75=double(b{:,cellstr(names.All)});
-D=cell(5,1);
-D{1}=makeData(X25,s,y,ids,names.All);
-D{2}=makeData(X75,s,y,ids,names.All);
-D{3}=makeData([X25(:,1:10),X75(:,11:43)],s,y,ids, ...
-    ["T25_"+names.Time,"F75_"+names.Frequency]);
+X25=double(a{:,cellstr(names.All)});X75=double(b{:,cellstr(names.All)});
+D=cell(5+double(cfg.IncludeAdaptive),1);
+D{1}=makeData(X25,s,y,ids,names.All);D{2}=makeData(X75,s,y,ids,names.All);
+D{3}=makeData([X25(:,1:10),X75(:,11:43)],s,y,ids,["T25_"+names.Time,"F75_"+names.Frequency]);
 D{4}=makeData(X25(:,1:10),s,y,ids,"T25_"+names.Time);
 D{5}=makeData(X75(:,11:43),s,y,ids,"F75_"+names.Frequency);
 labels=["S1_25ms","S2_75ms","S3A_Hybrid","Time25_Branch","Frequency75_Branch"];
-searches=cell(5,1);
-for j=1:5
-    searches{j}=searchCV(D{j},find(train),fold(train),cfg, ...
-        fullfile(cache,char(labels(j))),cfg.Seed+100*j);
+if cfg.IncludeAdaptive
+    D{6}=makeData([X25,X75],s,y,ids,names.All);D{6}.Adaptive=true;
+    labels(6)="S4_Adaptive_Exploratory";
 end
-% Nested outer CV: branch choice and hard-vote tie preference are learned
-% exclusively inside each outer-training partition. Same outer folds as S1-S3A.
-vote=selectVoting(D{4},D{5},find(train),fold(train),cfg,fullfile(cache,'Voting'));
+if cfg.Stage=="benchmark"
+    result=benchmarkTraining(D,find(train),fold(train),cfg,cache,labels);return;
+end
+searches=cell(size(D));
+for j=1:numel(D)
+    searches{j}=searchCV(D{j},find(train),fold(train),cfg,fullfile(cache,char(labels(j))),cfg.Seed+100*j);
+end
+voteRoot=fullfile(cache,'Voting');
+vote=selectVoting(D{4},D{5},find(train),fold(train),cfg,voteRoot);
 vote.Best.K=searches{4}.Best.K+searches{5}.Best.K;
-% Freeze baseline and hybrid choice BEFORE any test prediction is requested.
-baseline=1;
-if isBetter(searches{2}.Best,searches{1}.Best,cfg), baseline=2; end
-hybrid=3;
-if isBetter(vote.Best,searches{3}.Best,cfg), hybrid=4; end
+baseline=1;if isBetter(searches{2}.Best,searches{1}.Best,cfg),baseline=2;end
+hybrid=3;if isBetter(vote.Best,searches{3}.Best,cfg),hybrid=4;end
+choices=cellfun(@(r)r.Best,searches,'UniformOutput',false);
+equal=struct();
+if cfg.IncludeEqualCount
+    [equal.Count,equal.Choices,equal.BudgetCurve]=equalBudget(searches,cfg);
+    equal.Vote=selectVoting(D{4},D{5},find(train),fold(train),cfg, ...
+        fullfile(cache,'EqualCountVoting'),equal.Count,voteRoot);
+    equal.Vote.Best.K=equal.Count;
+end
 selection=struct('Baseline',labels(baseline),'PreferredHybrid', ...
-    string(choose(hybrid==3,'S3A_Hybrid','S3B_Voting')), ...
-    'VotingMethod',vote.Method,'TimeChoice',searches{4}.Best, ...
-    'FrequencyChoice',searches{5}.Best,'FrozenBeforeTest',true);
-if isfile(fullfile(cache,'CI_SELECTION_FROZEN.mat'))
-    frozen=load(fullfile(cache,'CI_SELECTION_FROZEN.mat'),'selection');
-    assert(isequaln(selection,frozen.selection),'Selection differs from the pre-Test CI freeze.');
+    string(choose(hybrid==3,'S3A_Hybrid','S3B_Voting')),'VotingMethod',vote.Method, ...
+    'TimeChoice',choices{4},'FrequencyChoice',choices{5},'FrozenBeforeTest',true, ...
+    'AdaptiveIsExploratory',cfg.IncludeAdaptive,'EqualCountIsSupplemental',cfg.IncludeEqualCount);
+if cfg.IncludeEqualCount
+    selection.EqualCount=equal.Count;selection.EqualChoices=equal.Choices;selection.EqualVotingMethod=equal.Vote.Method;
 end
-atomicSave(fullfile(cache,'TRAINING_SELECTION_FROZEN.mat'),'selection',selection);
-% Train final models and evaluate each frozen scenario once. Test data never
-% enters rankers, imputation, scaling, calibration, or selection.
-pred=table(ids(test),y(test),'VariableNames',{'SubjectID','Label'});
-models=cell(5,1); selected=cell(5,1); summary=table();
-for j=1:5
-    finalfile=fullfile(cache,sprintf('FinalModel_%d.mat',j));
-    if cfg.Resume && isfile(finalfile)
-        z=load(finalfile,'bundle'); bundle=z.bundle;
-    else
-        bundle=trainFinal(D{j},find(train),searches{j}.Best,cfg,cfg.Seed+10000+j);
-        atomicSave(finalfile,'bundle',bundle);
-    end
-    models{j}=bundle; selected{j}=bundle.Features;
-    ps=predictSubjects(bundle,D{j},find(test));
-    if j<=3
-        pred.(labels(j)+"_Probability")=ps; pred.(labels(j)+"_Prediction")=ps>=.5;
-        summary=[summary;summaryRow(disease,labels(j),searches{j}.Best,y(test),ps>=.5)]; %#ok<AGROW>
-    else
-        pred.(labels(j)+"_Probability")=ps;
-    end
-end
-pt=pred.Time25_Branch_Probability; pf=pred.Frequency75_Branch_Probability;
-if vote.Method=="Soft"
-    vp=(pt+pf)/2; vh=vp>=.5;
+freeze=fullfile(cache,'TRAINING_SELECTION_FROZEN.mat');
+if cfg.Resume&&isfile(freeze)
+    saved=load(freeze,'selection');assert(isequaln(saved.selection,selection),'Frozen training selections changed.');
 else
-    preferTime=~isBetter(searches{5}.Best,searches{4}.Best,cfg);
-    vh=hardVote(pt,pf,preferTime); vp=(pt+pf)/2;
+    atomicSave(freeze,'selection',selection);
 end
-pred.S3B_Voting_MeanProbability=(pt+pf)/2;
-pred.S3B_Voting_Prediction=vh;
-% In hard mode MeanProbability is descriptive, not the thresholded decision.
-summary=[summary;summaryRow(disease,"S3B_Voting",vote.Best,y(test),vh)];
-summary.Classifier(4)=searches{4}.Best.Classifier+" + "+searches{5}.Best.Classifier;
-summary.Ranker(4)=searches{4}.Best.Ranker+" + "+searches{5}.Best.Ranker;
-summary.FeatureCount(4)=searches{4}.Best.K+searches{5}.Best.K;
-result=struct('Disease',disease,'Summary',summary,'Predictions',pred, ...
-    'Cohort',cohort,'ExcludedSubjects',excluded,'Matching',[h.Log;p.Log], ...
-    'Inventory',subjectInventory(h,p),'Selection',selection,'Searches',{searches}, ...
-    'Voting',vote,'Features',{selected},'FinalRanks',{cellfun(@(b) ...
-    table((1:numel(b.RankingOrder))',reshape(b.AllFeatureNames(b.RankingOrder),[],1), ...
-    b.RankingScores(b.RankingOrder),'VariableNames',{'Rank','Feature','Score'}),models,'UniformOutput',false)}, ...
-    'ScenarioNames',labels, ...
+if cfg.Stage=="training",result=selection;return;end
+% Fit EVERY final bundle before requesting ANY test prediction.
+models=cell(size(D));equalModels=cell(size(D));selected=cell(size(D));
+for j=1:numel(D)
+    finalfile=fullfile(cache,sprintf('FinalModel_%d.mat',j));
+    if cfg.Resume&&isfile(finalfile),saved=load(finalfile,'bundle');bundle=saved.bundle;
+    else,bundle=trainFinal(D{j},find(train),choices{j},cfg,cfg.Seed+10000+j);atomicSave(finalfile,'bundle',bundle);end
+    models{j}=bundle;selected{j}=bundle.Features;
+    if cfg.IncludeEqualCount
+        finalfile=fullfile(cache,sprintf('Equal_FinalModel_%d.mat',j));
+        if cfg.Resume&&isfile(finalfile),saved=load(finalfile,'bundle');equalModels{j}=saved.bundle;
+        else
+            equalModels{j}=trainFinal(D{j},find(train),equal.Choices{j},cfg,cfg.Seed+10000+j);
+            atomicSave(finalfile,'bundle',equalModels{j});
+        end
+    end
+end
+pred=table(ids(test),y(test),'VariableNames',{'SubjectID','Label'});summary=table();probabilities=cell(size(D));
+for j=1:numel(D)
+    ps=predictSubjects(models{j},D{j},find(test));probabilities{j}=ps;
+    pred.(labels(j)+"_Probability")=ps;
+    if ~ismember(j,[4,5])
+        pred.(labels(j)+"_Prediction")=ps>=.5;
+        summary=[summary;summaryRow(disease,labels(j),choices{j},y(test),ps>=.5)]; %#ok<AGROW>
+    end
+end
+pt=probabilities{4};pf=probabilities{5};preferTime=~isBetter(choices{5},choices{4},cfg);
+if vote.Method=="Hard",vh=hardVote(pt,pf,preferTime);else,vh=(pt+pf)/2>=.5;end
+pred.S3B_Voting_MeanProbability=(pt+pf)/2;pred.S3B_Voting_Prediction=vh;
+summary=[summary;voteSummary(disease,"S3B_Voting",vote,choices,y(test),pt,pf,cfg)];
+if cfg.IncludeEqualCount
+    equal.Summary=table();equal.Predictions=pred(:,{'SubjectID','Label'});equal.Features=table();ep=cell(size(D));
+    for j=1:numel(D)
+        ep{j}=predictSubjects(equalModels{j},D{j},find(test));
+        equal.Predictions.(labels(j)+"_Probability")=ep{j};
+        if ~ismember(j,[4,5])
+            equal.Predictions.(labels(j)+"_Prediction")=ep{j}>=.5;
+            equal.Summary=[equal.Summary;summaryRow(disease,"Equal_"+labels(j),equal.Choices{j},y(test),ep{j}>=.5)]; %#ok<AGROW>
+        end
+        fn=equalModels{j}.Features;
+        equal.Features=[equal.Features;table(repmat(labels(j),numel(fn),1),reshape(fn,[],1), ...
+            'VariableNames',{'Scenario','Feature'})]; %#ok<AGROW>
+    end
+    prefer=~isBetter(equal.Choices{5},equal.Choices{4},cfg);
+    if equal.Vote.Method=="Hard",eh=hardVote(ep{4},ep{5},prefer);else,eh=(ep{4}+ep{5})/2>=.5;end
+    equal.Predictions.S3B_Voting_Prediction=eh;
+    equal.Summary=[equal.Summary;voteSummary(disease,"Equal_S3B_Voting",equal.Vote,equal.Choices,y(test),ep{4},ep{5},cfg)];
+end
+ranks=cellfun(@(m)table((1:numel(m.RankingOrder))',reshape(m.AllFeatureNames(m.RankingOrder),[],1), ...
+    m.RankingScores(m.RankingOrder),'VariableNames',{'Rank','Feature','Score'}),models,'UniformOutput',false);
+result=struct('Disease',disease,'Summary',summary,'Predictions',pred,'Cohort',cohort, ...
+    'ExcludedSubjects',excluded,'Matching',[h.Log;p.Log],'Inventory',subjectInventory(h,p), ...
+    'Selection',selection,'Searches',{searches},'Voting',vote,'Features',{selected}, ...
+    'FinalRanks',{ranks},'ScenarioNames',labels,'EqualCount',equal, ...
     'QuickTest',cfg.QuickTest,'TrainingFrameCap',cfg.MaxTrainFramesPerSubject);
+if cfg.IncludeAdaptive
+    result.AdaptiveWindows=table(reshape(names.All,[],1),reshape(models{6}.AllFeatureNames,[],1), ...
+        ismember(reshape(models{6}.AllFeatureNames,[],1),models{6}.Features), ...
+        'VariableNames',{'OriginalFeature','ChosenWindowAndFeature','Selected'});
+else,result.AdaptiveWindows=table();end
+end
+
+function [columns,names]=inputMapping(d,ids,cfg,seed)
+columns=1:size(d.X,2);names=d.Names;
+if ~isfield(d,'Adaptive')||~d.Adaptive,return;end
+% Supplemental adaptive windows. Window choice is re-learned inside EVERY
+% fitting partition, using subject-level inner CV of univariate Gaussian NB.
+% No validation/calibration/test labels enter window choice for their model.
+rng(seed,'twister');rows=trainingRows(d,ids,cfg);p=numel(d.Names);
+u=nan(numel(ids),2*p);
+for j=1:numel(ids),u(j,:)=mean(d.X(rows(d.S(rows)==ids(j)),:),1,'omitnan');end
+y=d.Y(ids);fold=groupFolds(y,cfg.MaxFolds,seed);ba=nan(max(fold),2*p);se=ba;
+for k=1:max(fold)
+    tr=fold~=k;va=fold==k;pre=fitPreprocessor(u(tr,:));
+    z=applyPreprocessor(u(tr,:),pre);v=applyPreprocessor(u(va,:),pre);
+    mu0=mean(z(y(tr)==0,:),1);mu1=mean(z(y(tr)==1,:),1);
+    var0=max(var(z(y(tr)==0,:),1,1),1e-6);var1=max(var(z(y(tr)==1,:),1,1),1e-6);
+    log0=-.5*(log(var0)+(v-mu0).^2./var0);log1=-.5*(log(var1)+(v-mu1).^2./var1);
+    h=log1>=log0;labels=y(va);
+    se(k,:)=mean(h(labels==1,:),1);ba(k,:)=(se(k,:)+mean(~h(labels==0,:),1))/2;
+end
+meanBA=mean(ba,1);sd=std(ba,0,1);sen=mean(se,1);columns=1:p;
+for j=1:p
+    left=struct('MeanBA',meanBA(j),'StdBA',sd(j),'Sensitivity',sen(j),'K',1);
+    right=struct('MeanBA',meanBA(j+p),'StdBA',sd(j+p),'Sensitivity',sen(j+p),'K',1);
+    if isBetter(right,left,cfg),columns(j)=j+p;end
+end
+names="W25_"+d.Names;names(columns>p)="W75_"+d.Names(columns>p);
+end
+
+function best=bestAtCount(search,count,cfg)
+t=search.Candidates;ix=find(t.K==count & t.Valid);assert(~isempty(ix),'No valid candidate at k=%d.',count);
+best=table2struct(t(ix(1),:));
+for j=ix(:)'
+    choice=table2struct(t(j,:));if isBetter(choice,best,cfg),best=choice;end
+end
+end
+
+function [timeChoice,frequencyChoice]=constrainedBranches(time,freq,total,cfg)
+found=false;
+for kt=1:10
+    kf=total-kt;if kf<1||kf>33,continue;end
+    if ~any(time.Candidates.K==kt & time.Candidates.Valid)||~any(freq.Candidates.K==kf & freq.Candidates.Valid),continue;end
+    a=bestAtCount(time,kt,cfg);b=bestAtCount(freq,kf,cfg);
+    pair=struct('MeanBA',(a.MeanBA+b.MeanBA)/2,'StdBA',(a.StdBA+b.StdBA)/2, ...
+        'Sensitivity',(a.Sensitivity+b.Sensitivity)/2,'K',total);
+    if ~found||isBetter(pair,best,cfg)
+        timeChoice=a;frequencyChoice=b;best=pair;found=true;
+    end
+end
+assert(found,'No valid branch allocation sums to k=%d.',total);
+end
+
+function [count,choices,curve]=equalBudget(searches,cfg)
+% Shared count uses TRAINING CV of the three primary matrix scenarios only.
+% Voting cannot have fewer than one feature in each branch.
+common=intersect(intersect(searches{1}.Candidates.K,searches{2}.Candidates.K),searches{3}.Candidates.K);
+common=unique(common(common>=2));curve=table();found=false;
+for total=common(:)'
+    if ~any(searches{4}.Candidates.K+searches{5}.Candidates.K(1)==total)
+        available=false;
+        for kt=unique(searches{4}.Candidates.K)'
+            if any(searches{5}.Candidates.K==total-kt),available=true;break;end
+        end
+        if ~available,continue;end
+    end
+    selected=cell(1,numel(searches));
+    for j=[1,2,3],selected{j}=bestAtCount(searches{j},total,cfg);end
+    [selected{4},selected{5}]=constrainedBranches(searches{4},searches{5},total,cfg);
+    if numel(searches)>5,selected{6}=bestAtCount(searches{6},total,cfg);end
+    value=struct('MeanBA',mean(cellfun(@(b)b.MeanBA,selected(1:3))), ...
+        'StdBA',mean(cellfun(@(b)b.StdBA,selected(1:3))), ...
+        'Sensitivity',mean(cellfun(@(b)b.Sensitivity,selected(1:3))),'K',total);
+    curve=[curve;struct2table(value)]; %#ok<AGROW>
+    if ~found||isBetter(value,best,cfg),count=total;choices=selected;best=value;found=true;end
+end
+assert(found,'No common feature budget for equal-count comparison.');
+end
+
+function row=voteSummary(disease,name,vote,choices,y,pt,pf,cfg)
+prefer=~isBetter(choices{5},choices{4},cfg);
+if vote.Method=="Hard",h=hardVote(pt,pf,prefer);else,h=(pt+pf)/2>=.5;end
+row=summaryRow(disease,name,vote.Best,y,h);
+row.Classifier=choices{4}.Classifier+" + "+choices{5}.Classifier;
+row.Ranker=choices{4}.Ranker+" + "+choices{5}.Ranker;
+row.FeatureCount=choices{4}.K+choices{5}.K;
+end
+
+function store=benchmarkTraining(D,ids,fold,cfg,cache,labels)
+% One representative TRAINING CV fold. This mode NEVER predicts Test.
+store=table();k=1;tr=ids(fold~=k);va=ids(fold==k);[fitIDs,calIDs]=calibrationSplit(tr,D{1}.Y,cfg);
+for j=[1,3,4,5]
+    d=D{j};rows=trainingRows(d,tr,cfg);validation=find(ismember(d.S,va));
+    for kind=cfg.Classifiers
+        base=tr;if startsWith(kind,"SVM"),base=fitIDs;end
+        [input,~]=inputMapping(d,base,cfg,cfg.Seed+777);
+        rankMask=true(numel(rows),1);if startsWith(kind,"SVM"),rankMask=ismember(d.S(rows),fitIDs);end
+        pre=fitPreprocessor(d.X(rows(rankMask),input));z=applyPreprocessor(d.X(rows,input),pre);
+        zv=applyPreprocessor(d.X(validation,input),pre);y=d.Y(d.S(rows));w=subjectWeights(d.S(rows),y);
+        rng(cfg.Seed+900+j,'twister');started=tic;
+        model=fitModel(z,y,w,kind,ismember(d.S(rows),fitIDs),ismember(d.S(rows),calIDs),d.S(rows),cfg);
+        probability=aggregateScores(modelProbability(model,zv),d.S(validation),va);
+        m=metrics(d.Y(va),probability>=.5);seconds=toc(started);
+        r=table(labels(j),kind,size(z,2),numel(rows),numel(tr),seconds,m.BalancedAccuracy, ...
+            'VariableNames',{'Scenario','Classifier','FeatureCount','TrainingFrames','TrainingSubjects','FitPredictSeconds','TrainingValidationBA'});
+        store=[store;r]; %#ok<AGROW>
+        atomicTable(store,fullfile(cache,'Training_Runtime_Benchmark.xlsx'),'TrainingOnly');
+    end
+end
 end
 
 function out=choose(condition,a,b)
@@ -370,7 +520,7 @@ end
 
 function search=searchCV(d,subjectIDs,fold,cfg,cache,seed)
 if ~isfolder(cache), mkdir(cache); end
-p=size(d.X,2); candidates=candidateTable(cfg,p); kfold=max(fold);
+p=numel(d.Names); candidates=candidateTable(cfg,p); kfold=max(fold);
 parts=cell(kfold,1); todo=false(kfold,1);
 for k=1:kfold
     file=fullfile(cache,sprintf('Fold_%02d.mat',k));
@@ -384,14 +534,16 @@ if cfg.UseParallel && any(todo)
     tasks=find(todo); newParts=cell(numel(tasks),1);
     parfor task=1:numel(tasks)
         k=tasks(task);
-        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k);
+        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
+            fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
         atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);
         newParts{task}=part;
     end
     parts(tasks)=newParts;
 else
     for k=find(todo)'
-        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k);
+        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
+            fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
         atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);
         parts{k}=part;
     end
@@ -441,12 +593,14 @@ assert(isempty(intersect(training,validation)) && numel(unique(subjects))==numel
 % The same independent calibration partition is used by all SVM candidates.
 [fitIDs,calIDs]=calibrationSplit(training,d.Y,cfg);
 trainRows=trainingRows(d,training,cfg); valRows=find(ismember(d.S,validation));
-pre=fitPreprocessor(d.X(trainRows,:));
-z=applyPreprocessor(d.X(trainRows,:),pre);
-zv=applyPreprocessor(d.X(valRows,:),pre);
-svmPre=fitPreprocessor(d.X(trainRows(ismember(d.S(trainRows),fitIDs)),:));
-zs=applyPreprocessor(d.X(trainRows,:),svmPre);
-zsv=applyPreprocessor(d.X(valRows,:),svmPre);
+[inputColumns,normalNames]=inputMapping(d,training,cfg,seed+700);
+[svmColumns,svmNames]=inputMapping(d,fitIDs,cfg,seed+701);
+pre=fitPreprocessor(d.X(trainRows,inputColumns));
+z=applyPreprocessor(d.X(trainRows,inputColumns),pre);
+zv=applyPreprocessor(d.X(valRows,inputColumns),pre);
+svmPre=fitPreprocessor(d.X(trainRows(ismember(d.S(trainRows),fitIDs)),svmColumns));
+zs=applyPreprocessor(d.X(trainRows,svmColumns),svmPre);
+zsv=applyPreprocessor(d.X(valRows,svmColumns),svmPre);
 ys=d.Y(d.S(trainRows)); w=subjectWeights(d.S(trainRows),ys);
 fitMask=ismember(d.S(trainRows),fitIDs); calMask=ismember(d.S(trainRows),calIDs);
 part.BA=NaN(1,height(candidates)); part.Sensitivity=part.BA;
@@ -467,17 +621,21 @@ for r=1:numel(cfg.Rankers)
         continue
     end
     rt=table(repmat(k,numel(order),1),repmat(ranker,numel(order),1), ...
-        (1:numel(order))',reshape(d.Names(order),[],1),score(order), ...
+        (1:numel(order))',reshape(normalNames(order),[],1),score(order), ...
         'VariableNames',{'Fold','Ranker','Rank','Feature','Score'});
     part.Rankings=[part.Rankings;rt]; %#ok<AGROW>
+    svmRankReady=false;svmOrder=[];svmScore=[];
     for c=1:numel(cfg.Classifiers)
         activeOrder=order; activeX=z; activeV=zv;
-        if cfg.Classifiers(c)=="SVM"
+        if startsWith(cfg.Classifiers(c),"SVM")
             try
-                [activeOrder,svmScore]=rankFeatures(zs(fitMask,:),d.S(trainRows(fitMask)), ...
-                    d.Y,ranker,cfg,seed+r);
+                if ~svmRankReady
+                    [svmOrder,svmScore]=rankFeatures(zs(fitMask,:),d.S(trainRows(fitMask)), ...
+                        d.Y,ranker,cfg,seed+r);svmRankReady=true;
+                end
+                activeOrder=svmOrder;
                 sr=table(repmat(k,numel(activeOrder),1),repmat(ranker+"_SVMFitOnly",numel(activeOrder),1), ...
-                    (1:numel(activeOrder))',reshape(d.Names(activeOrder),[],1),svmScore(activeOrder), ...
+                    (1:numel(activeOrder))',reshape(svmNames(activeOrder),[],1),svmScore(activeOrder), ...
                     'VariableNames',{'Fold','Ranker','Rank','Feature','Score'});
                 part.Rankings=[part.Rankings;sr];
             catch err
@@ -594,11 +752,19 @@ function model=fitModel(x,y,w,kind,fitMask,calMask,subject,cfg)
 options=statset('UseParallel',false);
 model.Kind=kind;
 switch kind
-    case "SVM"
+    case {"SVM","SVM_Linear","SVM_Quadratic","SVM_RBF"}
         % SVM raw margins are NOT probabilities. The margin model uses only
         % fit subjects; a Platt sigmoid uses separate calibration subjects.
         % Never call fitPosterior's frame-random cross-validation.
-        if strcmp(cfg.SVMBackend,'certified_primal')
+        if ismember(kind,["SVM_Quadratic","SVM_RBF"])
+            kernel="gaussian"; arguments={};
+            if kind=="SVM_Quadratic",kernel="polynomial";arguments={'PolynomialOrder',2};end
+            svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction',char(kernel), ...
+                arguments{:},'KernelScale','auto','BoxConstraint',1, ...
+                'Standardize',false,'ClassNames',[0;1],'Prior','uniform', ...
+                'Weights',w(fitMask),'Solver','SMO','CacheSize',cfg.KernelCacheMB);
+            assert(svm.ConvergenceInfo.Converged,'Kernel SVM did not converge.');
+        elseif strcmp(cfg.SVMBackend,'certified_primal')
             wf=w(fitMask);yf=y(fitMask);
             for cls=0:1,wf(yf==cls)=.5*wf(yf==cls)/sum(wf(yf==cls));end
             [svm,fitInfo]=fitCertifiedLinearSVM(x(fitMask,:),yf,wf,1/sum(fitMask));
@@ -639,8 +805,10 @@ switch kind
         end
         wc=subjectWeights(subject(calMask),y(calMask));
         model.Core=svm; model.Calibration=fitPlatt(raw,y(calMask),wc);
-    case "KNN"
-        model.Core=fitcknn(x,y,'NumNeighbors',min(cfg.KNNNeighbors,size(x,1)), ...
+    case {"KNN","KNN3","KNN5"}
+        neighbors=cfg.KNNNeighbors;
+        if kind=="KNN3",neighbors=3;elseif kind=="KNN5",neighbors=5;end
+        model.Core=fitcknn(x,y,'NumNeighbors',min(neighbors,size(x,1)), ...
             'Distance','euclidean','DistanceWeight','inverse','Standardize',false, ...
             'ClassNames',[0;1],'Prior','uniform','Weights',w);
     case "RandomForest"
@@ -692,7 +860,7 @@ end
 
 function p=modelProbability(model,x)
 switch model.Kind
-    case "SVM"
+    case {"SVM","SVM_Linear","SVM_Quadratic","SVM_RBF"}
         if isstruct(model.Core) && isfield(model.Core,'Type') && strcmp(model.Core.Type,'certified_linear_svm')
             margin=x*model.Core.Beta+model.Core.Bias;
         else
@@ -722,28 +890,32 @@ function bundle=trainFinal(d,ids,best,cfg,seed)
 rows=trainingRows(d,ids,cfg);
 [fitIDs,calIDs]=calibrationSplit(ids,d.Y,cfg);
 rankMask=true(numel(rows),1);
-if best.Classifier=="SVM", rankMask=ismember(d.S(rows),fitIDs); end
-pre=fitPreprocessor(d.X(rows(rankMask),:));
-z=applyPreprocessor(d.X(rows,:),pre);
+if startsWith(best.Classifier,"SVM"), rankMask=ismember(d.S(rows),fitIDs); end
+mappingIDs=ids;if startsWith(best.Classifier,"SVM"),mappingIDs=fitIDs;end
+[inputColumns,actualNames]=inputMapping(d,mappingIDs,cfg,seed+700);
+pre=fitPreprocessor(d.X(rows(rankMask),inputColumns));
+z=applyPreprocessor(d.X(rows,inputColumns),pre);
 [order,score]=rankFeatures(z(rankMask,:),d.S(rows(rankMask)),d.Y,best.Ranker,cfg,seed);
 cols=order(1:best.K);
 y=d.Y(d.S(rows)); w=subjectWeights(d.S(rows),y);
 rng(seed,'twister');
 model=fitModel(z(:,cols),y,w,best.Classifier,ismember(d.S(rows),fitIDs), ...
     ismember(d.S(rows),calIDs),d.S(rows),cfg);
-bundle=struct('Preprocessor',pre,'Columns',cols,'Features',d.Names(cols), ...
-    'RankingOrder',order,'RankingScores',score,'AllFeatureNames',d.Names, ...
+bundle=struct('Preprocessor',pre,'Columns',cols,'Features',actualNames(cols),'InputColumns',inputColumns, ...
+    'RankingOrder',order,'RankingScores',score,'AllFeatureNames',actualNames, ...
     'Model',model,'Choice',best,'FitSubjectIDs',d.IDs(fitIDs), ...
     'CalibrationSubjectIDs',d.IDs(calIDs),'TrainingRows',numel(rows), ...
     'UsedTrainingSubjects',d.IDs(ids));
 end
 
 function p=predictSubjects(bundle,d,ids)
-rows=find(ismember(d.S,ids)); z=applyPreprocessor(d.X(rows,:),bundle.Preprocessor);
+rows=find(ismember(d.S,ids)); z=applyPreprocessor(d.X(rows,bundle.InputColumns),bundle.Preprocessor);
 p=aggregateScores(modelProbability(bundle.Model,z(:,bundle.Columns)),d.S(rows),ids);
 end
 
-function vote=selectVoting(time,freq,ids,fold,cfg,cache)
+function vote=selectVoting(time,freq,ids,fold,cfg,cache,budget,searchRoot)
+if nargin<7,budget=Inf;end
+if nargin<8,searchRoot=cache;end
 if ~isfolder(cache), mkdir(cache); end
 kfold=max(fold); ptime=NaN(numel(ids),1); pfreq=ptime; hard=false(numel(ids),1);
 ba=NaN(kfold,2); se=ba; details=table();
@@ -757,8 +929,11 @@ for k=1:kfold
     else
         tr=ids(fold~=k); va=ids(fold==k);
         inner=groupFolds(time.Y(tr),cfg.MaxFolds,cfg.Seed+20000+k);
-        tc=searchCV(time,tr,inner,cfg,fullfile(cache,sprintf('Outer_%02d_Time',k)),cfg.Seed+30000+k);
-        fc=searchCV(freq,tr,inner,cfg,fullfile(cache,sprintf('Outer_%02d_Frequency',k)),cfg.Seed+40000+k);
+        tc=searchCV(time,tr,inner,cfg,fullfile(searchRoot,sprintf('Outer_%02d_Time',k)),cfg.Seed+30000+k);
+        fc=searchCV(freq,tr,inner,cfg,fullfile(searchRoot,sprintf('Outer_%02d_Frequency',k)),cfg.Seed+40000+k);
+        if isfinite(budget)
+            [tc.Best,fc.Best]=constrainedBranches(tc,fc,budget,cfg);
+        end
         tm=trainFinal(time,tr,tc.Best,cfg,cfg.Seed+50000+k);
         fm=trainFinal(freq,tr,fc.Best,cfg,cfg.Seed+60000+k);
         pt=predictSubjects(tm,time,va); pf=predictSubjects(fm,freq,va);
@@ -841,7 +1016,7 @@ sel=table(r.Selection.Baseline,r.Selection.PreferredHybrid,r.Selection.VotingMet
     {'BaselineChosenByTrainingCV','HybridChosenByTrainingCV','VotingMethod','FrozenBeforeTest'});
 writetable(sel,tmp,'Sheet','FrozenSelections');
 features=table();
-for j=1:5
+for j=1:numel(r.Searches)
     name=r.ScenarioNames(j); s=r.Searches{j};
     writetable(s.Candidates,tmp,'Sheet',sprintf('CV_%d',j));
     writetable(s.Failures,tmp,'Sheet',sprintf('Failures_%d',j));
@@ -858,6 +1033,16 @@ writetable(features,tmp,'Sheet','SelectedFeatures');
 writetable(r.Voting.Choices,tmp,'Sheet','VotingSelection');
 writetable(r.Voting.Details,tmp,'Sheet','VotingNestedBranches');
 writetable(r.Voting.TrainingOOF,tmp,'Sheet','VotingTrainingOOF');
+if ~isempty(r.AdaptiveWindows),writetable(r.AdaptiveWindows,tmp,'Sheet','AdaptiveWindows');end
+if isfield(r.EqualCount,'Summary')
+    writetable(r.EqualCount.Summary,tmp,'Sheet','EqualCountSummary');
+    writetable(r.EqualCount.Predictions,tmp,'Sheet','EqualCountPredictions');
+    writetable(r.EqualCount.Features,tmp,'Sheet','EqualCountFeatures');
+    writetable(r.EqualCount.BudgetCurve,tmp,'Sheet','EqualCountBudgetCV');
+    writetable(r.EqualCount.Vote.Choices,tmp,'Sheet','EqualVotingSelection');
+    writetable(r.EqualCount.Vote.Details,tmp,'Sheet','EqualVotingNestedBranches');
+    writetable(r.EqualCount.Vote.TrainingOOF,tmp,'Sheet','EqualVotingTrainingOOF');
+end
 movefile(tmp,book,'f');
 end
 
@@ -896,13 +1081,22 @@ exportgraphics(f,fullfile(outdir,[safeName(scenario+"_"+ranker) '.png']),'Resolu
 end
 
 function exportSummary(results,cfg,runlog)
-t=table(); predictions=table(); features=table(); matching=table();
+t=table(); predictions=table(); features=table(); matching=table();equalSummary=table();equalPredictions=table();adaptive=table();
 for j=1:numel(results)
     if isempty(results{j}), continue; end
-    r=results{j}; t=[t;r.Summary]; %#ok<AGROW>
+    r=results{j}; t=[t;r.Summary];
+    if isfield(r.EqualCount,'Summary')
+        equalSummary=[equalSummary;r.EqualCount.Summary];
+        ep=addvars(r.EqualCount.Predictions,repmat(r.Disease,height(r.EqualCount.Predictions),1), ...
+            'Before',1,'NewVariableNames','Disease');equalPredictions=[equalPredictions;ep];
+    end
+    if ~isempty(r.AdaptiveWindows)
+        aw=addvars(r.AdaptiveWindows,repmat(r.Disease,height(r.AdaptiveWindows),1),'Before',1,'NewVariableNames','Disease');
+        adaptive=[adaptive;aw];
+    end %#ok<AGROW>
     p=r.Predictions; p=addvars(p,repmat(r.Disease,height(p),1),'Before',1,'NewVariableNames','Disease');
     predictions=[predictions;p]; matching=[matching;r.Matching]; %#ok<AGROW>
-    for k=1:5
+    for k=1:numel(r.Searches)
         q=table(repmat(r.Disease,numel(r.Features{k}),1), ...
             repmat(r.ScenarioNames(k),numel(r.Features{k}),1), ...
             (1:numel(r.Features{k}))',reshape(r.Features{k},[],1), ...
@@ -914,6 +1108,8 @@ file=fullfile(cfg.OutputDir,'All_Diseases_Summary.xlsx'); tmp=[tempname(cfg.Outp
 if ~isempty(t)
     writetable(t,tmp,'Sheet','Summary'); writetable(predictions,tmp,'Sheet','SubjectPredictions');
     writetable(features,tmp,'Sheet','SelectedFeatures'); writetable(matching,tmp,'Sheet','Matching');
+    if ~isempty(equalSummary),writetable(equalSummary,tmp,'Sheet','EqualCountSummary');writetable(equalPredictions,tmp,'Sheet','EqualCountPredictions');end
+    if ~isempty(adaptive),writetable(adaptive,tmp,'Sheet','AdaptiveWindows');end
 end
 writetable(runlog,tmp,'Sheet','RunStatus');
 metadata=table(string(cfg.ProtocolVersion),cfg.QuickTest,cfg.MaxTrainFramesPerSubject, ...
@@ -1114,7 +1310,7 @@ end
 function sig=runSignature(cfg,files)
 % Content hashing prevents reuse after a same-size/timestamp Excel change.
 % Includes THIS source file, so altered logic cannot reuse old checkpoints.
-copy=cfg; copy=rmfield(copy,{'Resume','UseParallel','OutputDir'});
+copy=cfg; copy=rmfield(copy,{'Resume','UseParallel','OutputDir','Stage'});
 payload=jsonencode(copy);
 for j=1:numel(files), payload=[payload '|' fileSHA(files(j))]; end %#ok<AGROW>
 payload=[payload '|' fileSHA(string(mfilename('fullpath'))+".m")];
@@ -1143,10 +1339,13 @@ t=table((1:43)',reshape(names.All,[],1), ...
     'VariableNames',{'Index','ActualExcelColumn','FeatureFamily'});
 atomicTable(t,fullfile(cfg.OutputDir,'Feature_Mapping.xlsx'),'Mapping');
 protocol=cfg; atomicSave(fullfile(cfg.OutputDir,'Run_Protocol.mat'),'protocol',protocol);
+grid=numel(cfg.Classifiers)*numel(cfg.Rankers);
 if cfg.QuickTest
-    base=5*3*16*cfg.MaxFolds; nested=2*3*16*cfg.MaxFolds^2;
+    base=(5+double(cfg.IncludeAdaptive))*3*grid*cfg.MaxFolds;
+    nested=2*3*grid*cfg.MaxFolds^2;
 else
-    base=(3*43+10+33)*16*cfg.MaxFolds; nested=(10+33)*16*cfg.MaxFolds^2;
+    base=(3*43+10+33+43*double(cfg.IncludeAdaptive))*grid*cfg.MaxFolds;
+    nested=(10+33)*grid*cfg.MaxFolds^2;
 end
 workload=table(base,nested,2*cfg.MaxFolds+5,base+nested+2*cfg.MaxFolds+5, ...
     numel(cfg.Diseases)*(base+nested+2*cfg.MaxFolds+5), ...

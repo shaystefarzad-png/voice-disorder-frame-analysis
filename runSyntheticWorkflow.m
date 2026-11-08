@@ -5,27 +5,10 @@ artifacts=fullfile(root,'synthetic-test-artifacts');
 if ~isfolder(artifacts), mkdir(artifacts); end
 work=tempname; mkdir(work); input=fullfile(work,'Features'); mkdir(input);
 output=fullfile(artifacts,'ModelResults');
-source=fileread(fullfile(root,'VoiceDiseaseModeling_Final.m'));
-assert(contains(source,'function statisticalReport') && contains(source,'function writeRunProtocol'), ...
-    'Uploaded modeling source is incomplete.');
-% Only a disposable copy has its configuration changed; no modeling logic is
-% replaced, and the repository source remains unchanged.
-source=strrep(source,"cfg.InputDir = 'D:\SVD\meta\svd_wav\Features_Corrected';", ...
-    "cfg.InputDir = '"+escapePath(input)+"';");
-source=strrep(source,"cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final';", ...
-    "cfg.OutputDir = '"+escapePath(output)+"';");
-source=regexprep(source,'cfg\.Diseases = \["Rekurrensparese"[\s\S]*?"Stimmlippenpolyp"\];', ...
-    'cfg.Diseases = "Hyperfunktionelle";');
-source=strrep(source,'cfg.QuickTest=false','cfg.QuickTest=true');
-assert(contains(source,"cfg.InputDir = '"+escapePath(input)+"';") && ...
-    contains(source,'cfg.Diseases = "Hyperfunktionelle";') && contains(source,'cfg.QuickTest=true'));
-file=fullfile(work,'VoiceDiseaseModeling_Final.m');
-fid=fopen(file,'w'); assert(fid~=-1); fwrite(fid,char(source),'char'); fclose(fid);
-rng(1405,'twister'); makeSyntheticExcel(input);
-old=pwd; cleanup=onCleanup(@()cd(old)); %#ok<NASGU>
-cd(work); addpath(work,'-begin'); clear VoiceDiseaseModeling_Final;
-resolved=which('VoiceDiseaseModeling_Final'); assert(strcmp(resolved,file));
-log=evalc('VoiceDiseaseModeling_Final');
+rng(1405,'twister');makeSyntheticExcel(input);
+overrides=struct('InputDir',input,'OutputDir',output,'Diseases',"Hyperfunktionelle", ...
+    'UseParallel',true,'QuickTest',true,'Resume',true,'IncludeAdaptive',true,'IncludeEqualCount',true);
+log=evalc('VoiceDiseaseModeling_Final(overrides)');
 writeText(fullfile(artifacts,'MATLAB_execution_log.txt'),log);
 qdir=fullfile(output,'QUICK_TEST_NOT_FOR_INFERENCE');
 book=fullfile(qdir,'All_Diseases_Summary.xlsx');
@@ -49,7 +32,7 @@ end
 assert(all(status.Status=="Completed"), ...
     'Pipeline reported failure. Inspect RunStatus and LastFailure.mat artifacts.');
 summary=readtable(book,'Sheet','Summary','TextType','string');
-assert(height(summary)==4 && numel(unique(summary.Scenario))==4);
+assert(height(summary)==5 && numel(unique(summary.Scenario))==5);
 assert(all(isfinite(summary.TestBalancedAccuracy)) && all(summary.TestBalancedAccuracy>=0 & summary.TestBalancedAccuracy<=1));
 diseaseBook=fullfile(qdir,'Hyperfunktionelle','Hyperfunktionelle_Results.xlsx');
 cohort=readtable(diseaseBook,'Sheet','SubjectSplit','TextType','string');
@@ -73,6 +56,22 @@ for scenario=["S1_25ms","S2_75ms","S3A_Hybrid","S3B_Voting"]
     assert(abs(summary.TestBalancedAccuracy(summary.Scenario==scenario)-ba)<1e-12, ...
         'Summary BA is inconsistent with SUBJECT-level predictions.');
 end
+% Required seven models and all four rankers are actually evaluated.
+cv=readtable(diseaseBook,'Sheet','CV_1','TextType','string');
+assert(numel(unique(cv.Classifier))==7 && numel(unique(cv.Ranker))==4);
+assert(all(cv.Valid),'A required classifier/ranker failed.');
+equal=readtable(diseaseBook,'Sheet','EqualCountSummary','TextType','string');
+assert(height(equal)==5&&numel(unique(equal.FeatureCount))==1,'Equal feature budget was not respected.');
+windows=readtable(diseaseBook,'Sheet','AdaptiveWindows','TextType','string');
+assert(height(windows)==43&&all(startsWith(windows.ChosenWindowAndFeature,["W25_","W75_"])));
+% Final models record disjoint fitting/calibration subjects, all from Train.
+files=dir(fullfile(qdir,'**','FinalModel_*.mat'));
+for j=1:numel(files)
+    loaded=load(fullfile(files(j).folder,files(j).name),'bundle');b=loaded.bundle;
+    assert(isempty(intersect(b.FitSubjectIDs,b.CalibrationSubjectIDs)));
+    assert(all(ismember(b.UsedTrainingSubjects,cohort.SubjectID(cohort.Train))));
+    assert(isempty(intersect(b.UsedTrainingSubjects,cohort.SubjectID(cohort.Test))));
+end
 stats=readtable(fullfile(qdir,'Statistical_Hypothesis_Validation.xlsx'),'Sheet','PerDisease');
 assert(height(stats)==2 && ~any(stats.HypothesisSupported));
 assert(all(stats.P_Holm>=stats.P_OneSided-1e-12));
@@ -82,7 +81,7 @@ cacheFiles=dir(fullfile(qdir,'**','*.mat'));
 keep=contains(string({cacheFiles.folder}),'cache_'); cacheFiles=cacheFiles(keep);
 assert(~isempty(cacheFiles));
 before=checkpointState(cacheFiles);
-log=evalc('VoiceDiseaseModeling_Final');
+log=evalc('VoiceDiseaseModeling_Final(overrides)');
 writeText(fullfile(artifacts,'MATLAB_resume_log.txt'),log);
 after=checkpointState(cacheFiles);
 assert(isequal(before,after),'Resume retrained or changed an existing completed checkpoint.');
@@ -93,7 +92,7 @@ end
 
 function makeSyntheticExcel(input)
 names=["ZCR","ZCR_Var","RMS","PeakAmp","Entropy","EnergyEntropy", ...
-    "JitterProxy_local","JitterProxy_rap","ShimmerProxy_local","ShimmerProxy_apq", ...
+    "JitterLocal_CycleOrProxy","JitterRAP_CycleOrProxy","ShimmerLocal_CycleOrProxy","ShimmerAPQ5_CycleOrProxy", ...
     "HNR","SpecCentroid","SpecRolloff","SpecFlux","SpecEntropy", ...
     "MFCC"+string(1:13),"DeltaMFCC"+string(1:13),"FormantF1","FormantF2"];
 for label=0:1
