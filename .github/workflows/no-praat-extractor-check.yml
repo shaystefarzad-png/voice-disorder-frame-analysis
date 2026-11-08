@@ -1,0 +1,39 @@
+name: Validate MATLAB-only feature extractor
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - VoiceFeatureExtraction_NoPraat.m
+      - .github/workflows/no-praat-extractor-check.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    env:
+      VFE_TEST_OUTPUT: ${{ github.workspace }}/native-test-results
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Signal_Processing_Toolbox
+      - name: Validate cycle formulas, physical signals, full Excel extraction and resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            try, VoiceFeatureExtraction_NoPraat("selftest");
+            catch err, r=getReport(err,'extended','hyperlinks','off');
+            r=strrep(strrep(strrep(r,'%','%25'),char(13),'%0D'),char(10),'%0A');
+            fprintf(2,'::error title=MATLAB-only extractor::%s\n',r); rethrow(err); end
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-extractor-${{ runner.os }}
+          path: native-test-results/
+          retention-days: 30
