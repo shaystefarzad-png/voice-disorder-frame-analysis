@@ -1,0 +1,16 @@
+{
+  "tested_commit": "fa5598c",
+  "matlab_release": "R2023b",
+  "synthetic_integration": "PASSED",
+  "synthetic_job_seconds": 175,
+  "workflow_run": "https://github.com/shaystefarzad-png/voice-disorder-frame-analysis/actions/runs/42510207613",
+  "model_source_sha256": "4e3fcc810dbe06fbe6fc0eb93660636640e551d9b5f6785ec96966c484db558b",
+  "scope": "Seven classifiers, four rankers, direct/voting/adaptive hybrids, equal feature count and resume. QuickTest verifies implementation, not research hypothesis.",
+  "real_data_timing": "IN_PROGRESS when last checked at 2026-11-08 18:35:47 UTC",
+  "final_research_training": "NOT_STARTED",
+  "test_cohort_evaluation": "NOT_STARTED",
+  "earlier_runs": [
+    "42509299836: rejected nonconverged polynomial SVM",
+    "42509723025: alternate solver insufficient; normalized kernel scale then passed"
+  ]
+}
