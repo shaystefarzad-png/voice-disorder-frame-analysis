@@ -1,6 +1,7 @@
 function runSyntheticWorkflow
 % Integration test only. No patient data and no scientific inference.
 root=fileparts(mfilename('fullpath'));
+assert(strcmp(which('VoiceDiseaseModeling_Final'),fullfile(root,'VoiceDiseaseModeling_Final.m')),'Wrong modeling source on MATLAB path.');
 artifacts=fullfile(root,'synthetic-test-artifacts');
 if ~isfolder(artifacts), mkdir(artifacts); end
 work=tempname; mkdir(work); input=fullfile(work,'Features'); mkdir(input);

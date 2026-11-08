@@ -1,5 +1,5 @@
 function VoiceDiseaseModeling_Final(overrides)
-% Independent implementation for MATLAB R2023b. No previous modeling code used.
+% MATLAB R2023b; independent of test6/test7/test8; audited CycleOrProxy43 schema.
 % Run: VoiceDiseaseModeling_Final
 % Requires Statistics and Machine Learning Toolbox; Parallel Computing Toolbox
 % only when cfg.UseParallel=true. See deliverables/Implementation_Notes_FA.md.
@@ -14,6 +14,8 @@ if nargin>0
         cfg.(fields{j})=overrides.(fields{j});
     end
 end
+cfg.Diseases=reshape(string(cfg.Diseases),1,[]);
+cfg.Classifiers=reshape(string(cfg.Classifiers),1,[]);cfg.Rankers=reshape(string(cfg.Rankers),1,[]);
 assert(ismember(cfg.Stage,["all","training","benchmark"]),'Invalid Stage.');
 rng(cfg.Seed,'twister');
 assert(license('test','Statistics_Toolbox'), 'Statistics Toolbox is required.');
@@ -130,6 +132,10 @@ end
 
 function p=featurePath(cfg,ms,group)
 p=string(fullfile(cfg.InputDir,sprintf('FullFeats_%dms_%s.xlsx',ms,group)));
+if ~isfile(p)
+    packed=string(fullfile(cfg.InputDir,sprintf('FullFeats_%dms_%s.mat',ms,group)));
+    if isfile(packed),p=packed;end
+end
 end
 
 function pair=loadPair(cfg,group,label,names)
@@ -142,12 +148,22 @@ end
 
 function t=readFeatureTable(path,group,label,names)
 assert(isfile(path),'Missing feature workbook: %s',path);
-opts=detectImportOptions(path,'VariableNamingRule','preserve');
 required=["SubjectID","FileName","Vowel","Label","FrameID",names.All];
-assert(all(ismember(required,string(opts.VariableNames))), ...
-    'Workbook %s does not match the audited schema.',path);
-opts=setvartype(opts,{'SubjectID','FileName','Vowel'},'string');
-t=readtable(path,opts);
+if endsWith(path,".mat")
+    packed=load(path);
+    assert(isequal(reshape(string(packed.FeatureNames),1,[]),names.All),'Packed feature names differ.');
+    assert(size(packed.X,2)==43,'Packed feature dimension differs.');
+    t=table(string(packed.SubjectID(:)),string(packed.FileName(:)),string(packed.Vowel(:)), ...
+        double(packed.Label(:)),string(packed.Disease(:)),double(packed.FrameID(:)), ...
+        double(packed.FrameStartTime(:)),double(packed.FrameCenterTime(:)), ...
+        'VariableNames',{'SubjectID','FileName','Vowel','Label','Disease','FrameID','FrameStartTime','FrameCenterTime'});
+    t=[t,array2table(double(packed.X),'VariableNames',cellstr(names.All))];
+else
+    opts=detectImportOptions(path,'VariableNamingRule','preserve');
+    assert(all(ismember(required,string(opts.VariableNames))), ...
+        'Workbook %s does not match the audited schema.',path);
+    opts=setvartype(opts,{'SubjectID','FileName','Vowel'},'string');t=readtable(path,opts);
+end
 for col=["SubjectID","FileName","Vowel"]
     t.(col)=strip(string(t.(col)));
     assert(~any(ismissing(t.(col)) | strlength(t.(col))==0), ...
@@ -342,6 +358,7 @@ if cfg.IncludeEqualCount
     end
     prefer=~isBetter(equal.Choices{5},equal.Choices{4},cfg);
     if equal.Vote.Method=="Hard",eh=hardVote(ep{4},ep{5},prefer);else,eh=(ep{4}+ep{5})/2>=.5;end
+    equal.Predictions.S3B_Voting_MeanProbability=(ep{4}+ep{5})/2;
     equal.Predictions.S3B_Voting_Prediction=eh;
     equal.Summary=[equal.Summary;voteSummary(disease,"Equal_S3B_Voting",equal.Vote,equal.Choices,y(test),ep{4},ep{5},cfg)];
 end
@@ -416,13 +433,11 @@ function [count,choices,curve]=equalBudget(searches,cfg)
 common=intersect(intersect(searches{1}.Candidates.K,searches{2}.Candidates.K),searches{3}.Candidates.K);
 common=unique(common(common>=2));curve=table();found=false;
 for total=common(:)'
-    if ~any(searches{4}.Candidates.K+searches{5}.Candidates.K(1)==total)
-        available=false;
-        for kt=unique(searches{4}.Candidates.K)'
-            if any(searches{5}.Candidates.K==total-kt),available=true;break;end
-        end
-        if ~available,continue;end
+    available=false;
+    for kt=unique(searches{4}.Candidates.K)'
+        if any(searches{5}.Candidates.K==total-kt),available=true;break;end
     end
+    if ~available,continue;end
     selected=cell(1,numel(searches));
     for j=[1,2,3],selected{j}=bestAtCount(searches{j},total,cfg);end
     [selected{4},selected{5}]=constrainedBranches(searches{4},searches{5},total,cfg);
@@ -530,23 +545,31 @@ for k=1:kfold
         todo(k)=true;
     end
 end
-if cfg.UseParallel && any(todo)
-    tasks=find(todo); newParts=cell(numel(tasks),1);
-    parfor task=1:numel(tasks)
-        k=tasks(task);
-        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
-            fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
-        atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);
-        newParts{task}=part;
+if cfg.UseParallel && any(todo) && ~isempty(gcp('nocreate'))
+    tasks=find(todo);newParts=cell(numel(tasks),1);
+    try
+        parfor task=1:numel(tasks)
+            k=tasks(task);
+            part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
+                fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
+            atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);
+            newParts{task}=part;
+        end
+        parts(tasks)=newParts;todo(tasks)=false;
+    catch err
+        recovery=struct('Report',getReport(err,'extended','hyperlinks','off'), ...
+            'Action',"Reuse completed folds; finish missing folds serially; do not create another pool");
+        atomicSave(fullfile(cache,'ParallelRecovery.mat'),'recovery',recovery);
+        for k=tasks(:)'
+            file=fullfile(cache,sprintf('Fold_%02d.mat',k));
+            if isfile(file),saved=load(file,'part');parts{k}=saved.part;todo(k)=false;end
+        end
     end
-    parts(tasks)=newParts;
-else
-    for k=find(todo)'
-        part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
-            fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
-        atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);
-        parts{k}=part;
-    end
+end
+for k=find(todo)'
+    part=evaluateFold(d,subjectIDs,fold,k,candidates,cfg,seed+k, ...
+        fullfile(cache,sprintf('Fold_%02d_partial.mat',k)));
+    atomicSave(fullfile(cache,sprintf('Fold_%02d.mat',k)),'part',part);parts{k}=part;
 end
 C=height(candidates); ba=NaN(kfold,C); se=ba; valid=true(1,C);
 for k=1:kfold
@@ -757,10 +780,10 @@ switch kind
         % fit subjects; a Platt sigmoid uses separate calibration subjects.
         % Never call fitPosterior's frame-random cross-validation.
         if ismember(kind,["SVM_Quadratic","SVM_RBF"])
-            kernel="gaussian"; arguments={};
-            if kind=="SVM_Quadratic",kernel="polynomial";arguments={'PolynomialOrder',2};end
+            kernel="gaussian"; kernelArgs={};
+            if kind=="SVM_Quadratic",kernel="polynomial";kernelArgs={'PolynomialOrder',2};end
             svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction',char(kernel), ...
-                arguments{:},'KernelScale','auto','BoxConstraint',1, ...
+                kernelArgs{:},'KernelScale','auto','BoxConstraint',1, ...
                 'Standardize',false,'ClassNames',[0;1],'Prior','uniform', ...
                 'Weights',w(fitMask),'Solver','SMO','CacheSize',cfg.KernelCacheMB);
             assert(svm.ConvergenceInfo.Converged,'Kernel SVM did not converge.');
@@ -1190,7 +1213,10 @@ notes=table(["DeltaBA is a fraction; multiply by 100 for percentage points."; ..
     "Overall resampling/swap indicators synchronize shared SubjectIDs across diseases."; ...
     "Overall tests are Holm adjusted across the two hybrid methods."; ...
     "Incomplete disease sets and QuickTest cannot confirm the planned overall hypothesis."; ...
-    "Significance is conditional on this split and trained models; it is not external validation."], ...
+    "Significance is conditional on this split and trained models; it is not external validation."; ...
+    "25ms CycleOrProxy perturbation features may differ in definition from 75ms cycle metrics."; ...
+    "A significant primary result supports this hybrid recipe, not an isolated causal effect of window length."; ...
+    "Adaptive windows and equal-count comparisons are supplemental; they do not replace primary hypothesis tests."], ...
     'VariableNames',{'Interpretation'});
 writetable(notes,tmp,'Sheet','Methods'); movefile(tmp,file,'f');
 master=fullfile(cfg.OutputDir,'All_Diseases_Summary.xlsx');
@@ -1347,8 +1373,9 @@ else
     base=(3*43+10+33+43*double(cfg.IncludeAdaptive))*grid*cfg.MaxFolds;
     nested=(10+33)*grid*cfg.MaxFolds^2;
 end
-workload=table(base,nested,2*cfg.MaxFolds+5,base+nested+2*cfg.MaxFolds+5, ...
-    numel(cfg.Diseases)*(base+nested+2*cfg.MaxFolds+5), ...
+additional=(2*cfg.MaxFolds+5+double(cfg.IncludeAdaptive))*(1+double(cfg.IncludeEqualCount));
+workload=table(base,nested,additional,base+nested+additional, ...
+    numel(cfg.Diseases)*(base+nested+additional), ...
     'VariableNames',{'MainCVFitsPerDisease','NestedVotingCVFitsPerDisease', ...
     'AdditionalFitsPerDisease','UpperScheduledFitsPerDisease','UpperScheduledFitsAllDiseases'});
 atomicTable(workload,fullfile(cfg.OutputDir,'Computational_Workload.xlsx'),'Workload');

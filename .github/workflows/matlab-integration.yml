@@ -6,6 +6,8 @@ on:
     paths:
       - VoiceDiseaseModeling_Final.m
       - runSyntheticWorkflow.m
+      - runApprovedBenchmark.m
+      - datasets/approved-cycle43-v5/**
       - .github/workflows/matlab-integration.yml
 
 permissions:
@@ -38,3 +40,25 @@ jobs:
           path: synthetic-test-artifacts/
           if-no-files-found: warn
           retention-days: 7
+
+  approved-training-timing:
+    needs: integration
+    if: github.event.repository.private == false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Benchmark pilot and all training frames without any Test predictions
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runApprovedBenchmark
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-training-only-timing
+          path: approved-training-benchmark/
+          retention-days: 30

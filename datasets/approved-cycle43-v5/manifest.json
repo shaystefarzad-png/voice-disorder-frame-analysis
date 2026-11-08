@@ -1,0 +1,114 @@
+[
+  {
+    "File": "FullFeats_25ms_Healthy.mat",
+    "OriginalWorkbookSHA256": "f8dc3f04f03b4b5315e14b72de3f5a10002ac3f80838bdff27d217540af6106a",
+    "PackedSHA256": "e3e908593c441cd433255fba1190e3def6aee69935d2dba5625712a4ec2f8bfe",
+    "Frames": 49800,
+    "Features": 43,
+    "ByteCount": 15113475
+  },
+  {
+    "File": "FullFeats_25ms_Hyperfunktionelle.mat",
+    "OriginalWorkbookSHA256": "3029f2021333b2e905935867228ba676a07cc5914b26f57e92d6fcd73e6142a4",
+    "PackedSHA256": "02ce4ffaa4481b1c7c8c48edd845478b7158f5b2aafc02234544519ed1d3f174",
+    "Frames": 45247,
+    "Features": 43,
+    "ByteCount": 13734704
+  },
+  {
+    "File": "FullFeats_25ms_Laryngitis.mat",
+    "OriginalWorkbookSHA256": "630a9f13297327c9bdd45b18e1aaf85ba494cd7cb41bdb9c8f1174a37186902d",
+    "PackedSHA256": "120423078164f9da0596f5395bfea71e7cef5606ac1aa974704006d3362f6071",
+    "Frames": 45398,
+    "Features": 43,
+    "ByteCount": 13775598
+  },
+  {
+    "File": "FullFeats_25ms_Reinke Ödem.mat",
+    "OriginalWorkbookSHA256": "2ed9f6d73ffe96fe292465226c1ce4db52469413ef28d5061c9283f9720e0eb1",
+    "PackedSHA256": "3bdf5a7e5fd80c5bdfd45f4846232c2afcbe483a7cafe1117ecd545e1a466bca",
+    "Frames": 24573,
+    "Features": 43,
+    "ByteCount": 7452551
+  },
+  {
+    "File": "FullFeats_25ms_Rekurrensparese.mat",
+    "OriginalWorkbookSHA256": "c433e01fb9975dd724618a7bc7d9415feeea2aa060969784a6692dceb487ab05",
+    "PackedSHA256": "61edd57dbe10ac9147acba68517295bec98da3ed05aa9f847406fcf4608cfa85",
+    "Frames": 47420,
+    "Features": 43,
+    "ByteCount": 14358840
+  },
+  {
+    "File": "FullFeats_25ms_Spasmodische Dysphonie.mat",
+    "OriginalWorkbookSHA256": "9006daeccbe4cf2e7605b85f02558976190656c56eb787a051d31f8a67bfe3cc",
+    "PackedSHA256": "6d43426418ff0a13aceb07f9ec4b63050e6f481eebf194851af0d8b2d5f53b1a",
+    "Frames": 23808,
+    "Features": 43,
+    "ByteCount": 7201211
+  },
+  {
+    "File": "FullFeats_25ms_Stimmlippenpolyp.mat",
+    "OriginalWorkbookSHA256": "75edfd9d343c9e3970b4874cb848a30f2bee9a8e4d02aa1780e48e3f7141a3b6",
+    "PackedSHA256": "0bcf32d2e6dc387a1536b2382498ff21a862f933e10dbc18f6d70314e6a37b35",
+    "Frames": 16225,
+    "Features": 43,
+    "ByteCount": 4941478
+  },
+  {
+    "File": "FullFeats_75ms_Healthy.mat",
+    "OriginalWorkbookSHA256": "c8cedd3ed644462a4b4aa89b3fa0823aae0a701edc09c3aa27d6dcaea4175ad7",
+    "PackedSHA256": "4361443e74efaf37a0fa26904511358107d7dfd55206025a751803309e542c6e",
+    "Frames": 47985,
+    "Features": 43,
+    "ByteCount": 14473468
+  },
+  {
+    "File": "FullFeats_75ms_Hyperfunktionelle.mat",
+    "OriginalWorkbookSHA256": "4aefe5b9deeedf0c4f5eae6d0114c8de0797d4f7d7068c3e810767f1213ced27",
+    "PackedSHA256": "e208029f7a44323bd2a7d2e9b293444cc5b30dc5199f1e6b4b3893bbf2771eb9",
+    "Frames": 43657,
+    "Features": 43,
+    "ByteCount": 13156208
+  },
+  {
+    "File": "FullFeats_75ms_Laryngitis.mat",
+    "OriginalWorkbookSHA256": "b8e1133c32ee3de64771be31aa5c538c73d0e20d4ff935fddaaae9b4d8ed91fe",
+    "PackedSHA256": "48f23c24659a22f0cf4e9f0b4233d2619bc1b90fc9c816772396ae698e07cf57",
+    "Frames": 43598,
+    "Features": 43,
+    "ByteCount": 13136572
+  },
+  {
+    "File": "FullFeats_75ms_Reinke Ödem.mat",
+    "OriginalWorkbookSHA256": "581326c16a00d2d8987d670120ee67f2d8b00a87a5c5a4782c1da50b1082fbe9",
+    "PackedSHA256": "8b4029f36e7b3a1448bd8ec06e2b727e8008a5d25b8497047a2063fc775f29ed",
+    "Frames": 23553,
+    "Features": 43,
+    "ByteCount": 7095041
+  },
+  {
+    "File": "FullFeats_75ms_Rekurrensparese.mat",
+    "OriginalWorkbookSHA256": "584eb2d01ddb1f0ea1a966f3a91372b221704776f82fe172f161b4af111007f1",
+    "PackedSHA256": "6e05d283b8a1ecacad643de6ad82815b5954b0a772b10f8f6bdecfa503276897",
+    "Frames": 45575,
+    "Features": 43,
+    "ByteCount": 13691723
+  },
+  {
+    "File": "FullFeats_75ms_Spasmodische Dysphonie.mat",
+    "OriginalWorkbookSHA256": "bc4e96cadb2e345fb4d52b14fa824a0df8a5d3d6371a324602da645ac10a9d22",
+    "PackedSHA256": "735844e622be629b54931be22048c4143b6d5fe089a9ab4df0b85a474e2db28c",
+    "Frames": 22848,
+    "Features": 43,
+    "ByteCount": 6855611
+  },
+  {
+    "File": "FullFeats_75ms_Stimmlippenpolyp.mat",
+    "OriginalWorkbookSHA256": "0707601e4c550a721bc7fb6aa542b28b6940b1e14386d6218ff587723e2b11dd",
+    "PackedSHA256": "fd4adc0b34699fb83e8d466a95f1c1d8580b3f82ee5f75489915cac66f58c9a8",
+    "Frames": 15550,
+    "Features": 43,
+    "ByteCount": 4710354
+  }
+]
