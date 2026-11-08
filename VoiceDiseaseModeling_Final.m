@@ -479,6 +479,15 @@ for j=[1,3,4,5]
             'VariableNames',{'Scenario','Classifier','FeatureCount','TrainingFrames','TrainingSubjects','FitPredictSeconds','TrainingValidationBA'});
         store=[store;r]; %#ok<AGROW>
         atomicTable(store,fullfile(cache,'Training_Runtime_Benchmark.xlsx'),'TrainingOnly');
+        summaryFile=getenv('GITHUB_STEP_SUMMARY');
+        if ~isempty(summaryFile)
+            fid=fopen(summaryFile,'a');
+            if fid>=0
+                fprintf(fid,'- %s | %s | k=%d | training frames=%d | cap=%g | %.3f s | validation BA=%.4f\n', ...
+                    labels(j),kind,size(z,2),numel(rows),cfg.MaxTrainFramesPerSubject,seconds,m.BalancedAccuracy);
+                fclose(fid);
+            end
+        end
     end
 end
 end
@@ -780,10 +789,15 @@ switch kind
         % fit subjects; a Platt sigmoid uses separate calibration subjects.
         % Never call fitPosterior's frame-random cross-validation.
         if ismember(kind,["SVM_Quadratic","SVM_RBF"])
-            kernel="gaussian"; kernelArgs={};
-            if kind=="SVM_Quadratic",kernel="polynomial";kernelArgs={'PolynomialOrder',2};end
+            kernel="gaussian";kernelArgs={};scaleRule='auto';
+            if kind=="SVM_Quadratic"
+                kernel="polynomial";kernelArgs={'PolynomialOrder',2};
+                % Dimension-normalized quadratic kernel (1 + x*z'/p)^2.
+                % Fixed numerical convention; no response labels set the scale.
+                scaleRule=sqrt(size(x,2));
+            end
             svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction',char(kernel), ...
-                kernelArgs{:},'KernelScale','auto','BoxConstraint',1, ...
+                kernelArgs{:},'KernelScale',scaleRule,'BoxConstraint',1, ...
                 'Standardize',false,'ClassNames',[0;1],'Prior','uniform', ...
                 'Weights',w(fitMask),'Solver','SMO','CacheSize',cfg.KernelCacheMB, ...
                 'IterationLimit',1000000,'KKTTolerance',1e-3);
@@ -799,8 +813,8 @@ switch kind
             end
             model.SolverInfo=struct('InitialSMO',initialInfo,'Final',svm.ConvergenceInfo, ...
                 'KernelScale',kernelScale);
-            assert(svm.ConvergenceInfo.Converged,'%s did not converge. SMO: %s Final: %s', ...
-                kind,jsonencode(initialInfo),jsonencode(svm.ConvergenceInfo));
+            assert(svm.ConvergenceInfo.Converged,'%s scale=%.6g did not converge. SMO: %s Final: %s', ...
+                kind,kernelScale,jsonencode(initialInfo),jsonencode(svm.ConvergenceInfo));
         elseif strcmp(cfg.SVMBackend,'certified_primal')
             wf=w(fitMask);yf=y(fitMask);
             for cls=0:1,wf(yf==cls)=.5*wf(yf==cls)/sum(wf(yf==cls));end
