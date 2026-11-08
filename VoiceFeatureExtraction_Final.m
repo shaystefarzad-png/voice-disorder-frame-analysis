@@ -105,6 +105,10 @@ for disease=diseases
                 status="Completed";
             catch err
                 q.ProcessingErrors=q.ProcessingErrors+1;detail=string(err.message);complete=false;
+                if strcmp(getenv('GITHUB_ACTIONS'),'true')
+                    report=getReport(err,'extended','hyperlinks','off');report=strrep(strrep(strrep(report,'%','%25'),char(13),'%0D'),char(10),'%0A');
+                    fprintf(2,'::error title=Recording extraction failure::%s\n',report);
+                end
             end
             fileQC(end+1,:)={disease,Td.SubjectID(i),Td.FileName(i),window,nativeFs,nativeCount, ...
                 frameCount,voicedCount,validCounts(1),validCounts(2),validCounts(3),validCounts(4), ...
@@ -519,14 +523,14 @@ assert(numel(names)==43);
 end
 
 function signature=vfGroupSignature(T,settings)
-settings.Resume=false;blob=jsonencode(settings)+newline;
+settings.Resume=false;blob=string(jsonencode(settings))+string(newline);
 for j=1:height(T)
     p=T.FilePath(j);d=dir(p);
     if isempty(d),fileInfo="MISSING";else,fileInfo=vfHashFile(p);end
     blob=blob+strjoin([p,string(T.Label(j)),T.Gender(j),T.Disease(j),T.SubjectID(j),T.Vowel(j), ...
         string(T.NativeSampleRate(j)),string(T.OriginalSampleCount(j)),fileInfo],"|")+newline;
 end
-md=java.security.MessageDigest.getInstance('SHA-256');b=unicode2native(char(blob),'UTF-8');md.update(typecast(uint8(b),'int8'));signature=vfDigest(md);
+assert(isscalar(blob),'Group signature serialization must be scalar text.');signature=vfHashText(blob);
 end
 
 function h=vfHashFile(file)
