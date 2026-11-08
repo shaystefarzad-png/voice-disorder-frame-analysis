@@ -18,6 +18,16 @@ if ~isfolder(cfg.OutputFolder),mkdir(cfg.OutputFolder);end
 assert(cfg.PerturbationMode=="cycle_with_proxy_fallback" && isequal(cfg.ProxyFallbackWindowsMs,25),'This version supports cycle metrics with 25ms-only insufficient-cycle fallback.');
 assert(isequal(cfg.WindowMs,[25,75]) && cfg.TargetFs==16000,'This validated version uses 25/75ms at 16kHz.');
 sourceHash=vfHashFile(string(mfilename('fullpath'))+".m");
+if cfg.AutoSelfTest
+    proofFile=fullfile(cfg.OutputFolder,'Startup_SelfTest.mat');proofSignature=vfHashText(sourceHash+cfg.PraatBinarySHA256);
+    passed=false;
+    if isfile(proofFile),saved=load(proofFile,'proofSignature');passed=saved.proofSignature==proofSignature;end
+    if ~passed
+        fprintf('Running one-time SYNTHETIC startup checks before real extraction...\n');
+        vfSelfTest(cfg);vfAtomicSave(proofFile,'proofSignature',proofSignature);
+        fprintf('Startup checks PASSED. Beginning real recordings.\n');
+    end
+end
 settings=cfg;settings.CodeSHA256=sourceHash;settings.FeatureNames=vfFeatureNames(cfg);settings.InputMetadataSHA256=vfHashFile(cfg.DatasetPath);
 settings.ProxyEffectiveSupportMs=cfg.WindowMs+2*cfg.PerturbRadius*cfg.HopMs;
 settings.CycleMetricPercentUnits=true;settings.PraatCycleContext="Pulses tracked from native-rate whole recording; queries restricted to each frame interval";
@@ -142,7 +152,12 @@ for disease=diseases
     allQC=[allQC;groupQC];allFiles=[allFiles;groupFiles]; %#ok<AGROW>
     vfSaveQC(allQC,allFiles,cfg);
 end
-fprintf('Finished. Inspect Feature_Extraction_QC.xlsx and File_Extraction_QC.xlsx before modeling.\n');
+status=struct('Complete',all(allQC.FilesProcessed==allQC.ExpectedFiles & allQC.ProcessingErrors==0), ...
+    'ExpectedRecordingWindows',sum(allQC.ExpectedFiles),'ProcessedRecordingWindows',sum(allQC.FilesProcessed), ...
+    'Failures',sum(allQC.ProcessingErrors),'ModelFeatureCount',43,'Mode',cfg.PerturbationMode);
+vfWriteJSON(fullfile(cfg.OutputFolder,'Run_Status.json'),status);
+assert(status.Complete,'Extraction finished with failures. Inspect File_Extraction_QC.xlsx; correct sources and rerun to resume.');
+fprintf('Finished successfully. Inspect both QC workbooks before modeling.\n');
 end
 
 function cfg=vfConfiguration
@@ -153,7 +168,7 @@ cfg=struct('DatasetPath','D:\SVD\meta\svd_wav\data\Thesis_Final_Dataset.xlsx', .
     'PerturbationMode',"cycle_with_proxy_fallback",'ProxyFallbackWindowsMs',25, ...
     'PraatPath',"",'AutoDownloadPraat',true,'PraatVersion',"",'PraatBinarySHA256',"", ...
     'PitchFloor',50,'PitchCeiling',500,'MaxPeriodFactor',1.3,'MaxAmplitudeFactor',1.6, ...
-    'VerifyNSPPayload',true,'SaveCycleOnly',true,'Resume',true,'SaveMAT',true,'Version',"Native_PCM_CycleOrProxy43_v4");
+    'AutoSelfTest',true,'VerifyNSPPayload',true,'SaveCycleOnly',true,'Resume',true,'SaveMAT',true,'Version',"Native_PCM_CycleOrProxy43_v4");
 end
 
 
@@ -586,7 +601,7 @@ if strlength(exe)==0
     end
 end
 assert(isfile(exe),'Praat executable not found: %s',exe);
-[status,text]=system(vfCommand([exe,"--version"]));assert(status==0&&contains(text,'Praat'),'Cannot execute Praat: %s',text);
+[status,text]=system(vfCommand([exe,"--utf8","--version"]));text=text(text~=char(0));assert(status==0&&contains(text,'Praat'),'Cannot execute Praat: %s',text);
 version=strip(string(text));token=regexp(char(version),'Praat\s+(\d+)\.','tokens','once');
 assert(~isempty(token)&&str2double(token{1})>=6,'Unsupported Praat version.');
 hash=vfHashFile(exe);
@@ -609,7 +624,7 @@ output=fullfile(work,'metrics.csv');pulse=fullfile(work,'pulses.txt');
 copyfile(wav,input);vfWriteText(scriptFile,script);
 token=regexp(char(cfg.PraatVersion),'Praat\s+(\d+)\.','tokens','once');flags=strings(1,0);
 if str2double(token{1})>=7,flags="--FULL-TRUST";end % own generated script only: audio read and local result writes
-args=[string(cfg.PraatPath),flags,"--run",string(scriptFile),string(input),string(output),string(pulse), ...
+args=[string(cfg.PraatPath),"--utf8",flags,"--run",string(scriptFile),string(input),string(output),string(pulse), ...
     string(counts(1)),string(counts(2)),string(cfg.HopMs/1000),string(cfg.PitchFloor), ...
     string(cfg.PitchCeiling),string(cfg.MaxPeriodFactor),string(cfg.MaxAmplitudeFactor)];
 [status,message]=system(vfCommand(args));
@@ -700,7 +715,12 @@ for j=1:numel(args)
     end
 end
 command=strjoin(quoted,' ');
-if ispc,command=['cmd /D /V:OFF /S /C "' command '"'];end
+if ispc
+    command=['cmd /D /V:OFF /S /C "' command '"'];
+elseif isunix && ~ismac
+    % Praat is a separate native process: do not load MATLAB's older libstdc++.
+    command=['env LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu ' command];
+end
 end
 
 function vfWriteText(file,text)
@@ -771,7 +791,8 @@ assert(all(isnan(m(3,:)))&&all(isnan(m(4,:))));
 [m,~]=vfCombineCycleProxy(c,p,n,support,bad,voiced,75,cfg);assert(all(isnan(m),'all'));
 c=repmat([0,.1,.2,.3],4,1);[m,s]=vfCombineCycleProxy(c,p,n,support,bad,voiced,25,cfg);
 assert(isequal(m,c)&&all(s=="Cycle",'all'));
-base=tempname;mkdir(base);work=fullfile(base,'voice check Ö space');mkdir(work);
+base=tempname;mkdir(base);clean=onCleanup(@()vfRemoveOwnTemp(base)); %#ok<NASGU>
+work=fullfile(base,'voice check Ö space');mkdir(work);
 cfg.OutputFolder=fullfile(work,'features');mkdir(cfg.OutputFolder);
 [cfg.PraatPath,cfg.PraatVersion,cfg.PraatBinarySHA256]=vfEnsurePraat(cfg);
 % Independent physical oracle: an exactly periodic clean tone has nearly
@@ -801,7 +822,7 @@ T=table(paths,labels,["w";"m";"m"],diseases,ids,repmat("a",3,1),sources,repmat(f
     'VariableNames',{'FilePath','Label','Gender','Disease','SubjectID','Vowel','SourceNSP','NativeSampleRate','OriginalSampleCount'});
 metadata=fullfile(work,'Thesis_Final_Dataset.xlsx');writetable(T,metadata);
 options=struct('DatasetPath',metadata,'OutputFolder',fullfile(work,'full_extract'), ...
-    'Diseases',diseases','PraatPath',cfg.PraatPath,'SaveMAT',true,'SaveCycleOnly',true,'Resume',true);
+    'Diseases',diseases','PraatPath',cfg.PraatPath,'SaveMAT',true,'SaveCycleOnly',true,'Resume',true,'AutoSelfTest',false);
 VoiceFeatureExtraction_Final("run",options);
 file=fullfile(options.OutputFolder,'FullFeats_25ms_Healthy.xlsx');A=readtable(file,'TextType','string','VariableNamingRule','preserve');
 assert(height(A)==98 && width(A)==70,'Unexpected frame/schema dimensions.');
