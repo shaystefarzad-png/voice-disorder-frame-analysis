@@ -1,0 +1,50 @@
+name: Validate cycle-first final feature extractor
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - VoiceFeatureExtraction_Final.m
+      - .github/workflows/final-feature-extractor-check.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: MATLAB cycle extraction on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    env:
+      VFE_TEST_OUTPUT: ${{ github.workspace }}/vfe-test-results
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned official headless Praat for Linux tests
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/praat"
+          curl -fL --retry 2 --max-time 180 https://github.com/praat/praat.github.io/releases/download/v7.0.03/praat7003_linux-x64v3-barren.tar.gz -o "$RUNNER_TEMP/praat/praat.tar.gz"
+          cd "$RUNNER_TEMP/praat"
+          printf '%s\n' '0061237bd01d1a01488a1b4d60c7f8a747ef6909f90eeec0e7b9af4942bb5570  praat.tar.gz' | sha256sum --check
+          tar -xzf praat.tar.gz
+          printf 'PRAAT_BIN=%s\n' "$RUNNER_TEMP/praat/praat_barren" >> "$GITHUB_ENV"
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Signal_Processing_Toolbox
+      - name: Validate physical oracles, exact native input, fallback, metadata, and resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: >-
+            try, VoiceFeatureExtraction_Final("selftest");
+            catch err, r=getReport(err,'extended','hyperlinks','off');
+            r=strrep(strrep(strrep(r,'%','%25'),char(13),'%0D'),char(10),'%0A');
+            fprintf(2,'::error title=Cycle feature extractor::%s\n',r); rethrow(err); end
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cycle-extractor-${{ runner.os }}
+          path: vfe-test-results/
+          retention-days: 30
