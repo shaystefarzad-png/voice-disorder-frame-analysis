@@ -166,13 +166,13 @@ end
 
 function cfg=vfConfiguration
 cfg=struct('DatasetPath','D:\SVD\meta\svd_wav\data\Thesis_Final_Dataset.xlsx', ...
-    'OutputFolder','D:\SVD\meta\svd_wav\Features_Final_CycleFallback', ...
+    'OutputFolder','D:\SVD\meta\svd_wav\Features_Final_CycleFallback_HNRfix', ...
     'Diseases',["Healthy","Rekurrensparese","Hyperfunktionelle","Laryngitis",("Reinke "+string(char(214))+"dem"),"Spasmodische Dysphonie","Stimmlippenpolyp"], ...
     'TargetFs',16000,'WindowMs',[25,75],'HopMs',10,'NFFT',2048,'PerturbRadius',2, ...
     'PerturbationMode',"cycle_with_proxy_fallback",'ProxyFallbackWindowsMs',25, ...
     'PraatPath',"",'AutoDownloadPraat',true,'PraatVersion',"",'PraatBinarySHA256',"", ...
     'PitchFloor',50,'PitchCeiling',500,'MaxPeriodFactor',1.3,'MaxAmplitudeFactor',1.6, ...
-    'AutoSelfTest',true,'VerifyNSPPayload',true,'SaveCycleOnly',true,'Resume',true,'SaveMAT',true,'Version',"Native_PCM_CycleOrProxy43_v4");
+    'AutoSelfTest',true,'VerifyNSPPayload',true,'SaveCycleOnly',true,'Resume',true,'SaveMAT',true,'Version',"Native_PCM_CycleOrProxy43_HNRoverlap_v5");
 end
 
 
@@ -269,7 +269,7 @@ end
 
 % HNR autocorrelation based
 hnr=nan(1,nFrames);
-for f=1:nFrames, if voicedMask(f), hnr(f)=estimateHNRAutocorr(frames(:,f).*windowVector,fs,f0(f)); end, end
+for f=1:nFrames, if voicedMask(f), hnr(f)=estimateHNRAutocorr(frames(:,f),fs,f0(f),windowVector); end, end
 
 % MFCC from the exact same frames
 mfccMat=zeros(nFrames,numMFCC);
@@ -330,16 +330,46 @@ for ii=1:numel(validIdx)
 end
 end
 
-function hnrDb=estimateHNRAutocorr(x,fs,f0)
-hnrDb=NaN; if ~isfinite(f0)||f0<=0, return; end
-x=double(x(:)); x=x-mean(x); if sum(x.^2)<eps, return; end
-r=xcorr(x,'coeff'); mid=length(x); pr=r(mid:end);
-lag0=round(fs/f0); sr=max(1,round(0.15*lag0));
-loLag=max(1,lag0-sr); hiLag=min(numel(pr)-1,lag0+sr);
-if loLag>hiLag, return; end
-% pr(1) is lag zero: physical lag L is stored at MATLAB index L+1.
-rPeak=max(pr(loLag+1:hiLag+1));
-rPeak=min(max(rPeak,eps),1-eps); hnrDb=10*log10(rPeak/(1-rPeak));
+function hnrDb=estimateHNRAutocorr(x,fs,f0,w)
+% Window-weighted normalized correlation of overlapping RAW samples.
+% Fractional-period sinc refinement avoids integer-lag quantization bias.
+% This is a finite-frame HNR estimate, not Praat Harmonicity.
+hnrDb=NaN;
+if ~isscalar(f0)||~isfinite(f0)||f0<=0,return;end
+x=double(x(:));w=double(w(:));n=numel(x);
+if numel(w)~=n||any(~isfinite(x))||any(~isfinite(w))||any(w<0)||~any(w>0),return;end
+lag0=round(fs/f0);if lag0<1||n<2*lag0,return;end
+x=x-mean(x);scale=max(abs(x));if scale<=realmin,return;end
+x=x/scale;w=w/max(w);radius=max(1,round(.15*lag0));
+lo=max(1,lag0-radius);hi=min(n-34,lag0+radius);if lo>hi,return;end
+lags=lo:hi;values=arrayfun(@(lag)vfHNRLag(x,w,lag),lags);
+[peak,index]=max(values);left=max(lo,lags(index)-1);right=min(hi,lags(index)+1);
+if left<right
+    [~,negativePeak,flag]=fminbnd(@(lag)-vfHNRLag(x,w,lag),left,right, ...
+        optimset('Display','off','TolX',1e-5,'MaxIter',50));
+    if flag<=0,return;end
+    peak=max(peak,-negativePeak);
+end
+if ~isfinite(peak)||peak<=0,return;end
+% Numerical bound only: no clinical threshold or window-dependent offset.
+peak=min(max(peak,1e-12),1-1e-12);hnrDb=10*log10(peak/(1-peak));
+end
+
+function r=vfHNRLag(x,w,tau)
+half=32;lag=floor(tau+.5);delta=tau-lag;n=numel(x);
+first=max(0,half-lag);last=n-half-lag-1;r=-1;
+if last-first+1<8,return;end
+indices=(first:last)';shifted=indices+lag;a=x(indices+1);
+if abs(delta)<1e-12
+    b=x(shifted+1);
+else
+    taps=(-half:half)';kernel=sinc(delta-taps).*kaiser(2*half+1,8.6);
+    kernel=kernel/sum(kernel);filtered=conv(x,flipud(kernel),'valid');
+    b=filtered(shifted-half+1);
+end
+weights=w(indices+1).*interp1((0:n-1)',w,shifted+delta,'linear');
+denominator=sqrt(sum(weights.*a.^2)*sum(weights.*b.^2));
+if denominator>realmin,r=sum(weights.*a.*b)/denominator;end
 end
 
 function melBank=createMelFilterBank(fs,nfft,nFilters,fMin,fMax)
@@ -415,14 +445,31 @@ r=exp(-pi*bw/fs).*exp(1i*2*pi*f/fs);
 [estimatedF,estimatedBW]=poleFrequencyBandwidth(r,fs);
 assert(max(abs(estimatedF-f))<1e-8 && max(abs(estimatedBW-bw))<1e-8, ...
     'LPC frequency/bandwidth conversion regression.');
-% Peak exactly at the upper search boundary detects the HNR lag/index shift.
-x=zeros(400,1); x(150)=1; x(242)=1;
-x=x-mean(x); [corr,lags]=xcorr(x,'coeff');
-peak=max(corr(lags>=68 & lags<=92)); peak=min(max(peak,eps),1-eps);
-referenceHNR=10*log10(peak/(1-peak));
-actualHNR=estimateHNRAutocorr(x,fs,200);
-assert(abs(actualHNR-referenceHNR)<1e-10,'HNR lag-boundary regression.');
-assert(isnan(estimateHNRAutocorr(zeros(400,1),fs,200)));
+% Physical controls: noiseless periodic signals at integer/fractional lags.
+for frequency=[80,93.7,200,237.3,400]
+    for duration=[25,75]
+        count=round(fs*duration/1000);tt=(0:count-1)'/fs;ww=hamming(count,'periodic');
+        cleanSignal=sin(2*pi*frequency*tt+.37);
+        value=estimateHNRAutocorr(cleanSignal,fs,frequency,ww);
+        assert(value>90,'Pure periodic HNR regression.');
+    end
+end
+assert(isnan(estimateHNRAutocorr(zeros(400,1),fs,200,hamming(400,'periodic'))));
+assert(isnan(estimateHNRAutocorr(ones(400,1),fs,200,hamming(400,'periodic'))));
+assert(isnan(estimateHNRAutocorr(randn(400,1),fs,50,hamming(400,'periodic'))));
+% Known additive noise controls, independent of any patient/class labels.
+for targetSNR=[0,10,20,30]
+    for duration=[25,75]
+        count=round(fs*duration/1000);tt=(0:count-1)'/fs;ww=hamming(count,'periodic');
+        estimates=zeros(24,1);
+        for trial=1:24
+            periodic=sin(2*pi*237.3*tt+2*pi*rand);noise=randn(count,1);noise=noise-mean(noise);
+            noise=noise*sqrt(mean(periodic.^2)/(10^(targetSNR/10)*mean(noise.^2)));
+            estimates(trial)=estimateHNRAutocorr(periodic+noise,fs,237.3,ww);
+        end
+        assert(abs(median(estimates)-targetSNR)<2,'Known-noise HNR calibration regression.');
+    end
+end
 % Exercise the entire feature kernel on both base windows, including NaNs
 % legitimately produced by unvoiced/unresolved perturbation/formant estimates.
 t=(0:fs-1)'/fs; signal=.5*sin(2*pi*160*t)+.2*sin(2*pi*320*t)+.02*randn(size(t));
