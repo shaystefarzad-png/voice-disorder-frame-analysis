@@ -511,7 +511,7 @@ for j=1:height(T)
     blob=blob+strjoin([p,string(T.Label(j)),T.Gender(j),T.Disease(j),T.SubjectID(j),T.Vowel(j), ...
         string(T.NativeSampleRate(j)),string(T.OriginalSampleCount(j)),fileInfo],"|")+newline;
 end
-md=java.security.MessageDigest.getInstance('SHA-256');md.update(unicode2native(char(blob),'UTF-8'));signature=vfDigest(md);
+md=java.security.MessageDigest.getInstance('SHA-256');b=unicode2native(char(blob),'UTF-8');md.update(typecast(uint8(b),'int8'));signature=vfDigest(md);
 end
 
 function h=vfHashFile(file)
@@ -617,7 +617,10 @@ assert(status==0&&isfile(output)&&isfile(pulse),'Praat cycle analysis failed; no
 R=readtable(output,'TextType','string','TreatAsMissing',{'--undefined--','undefined'});
 expected=["Window_ms","FrameID","JitterLocal","JitterRAP","ShimmerLocal","ShimmerAPQ5","PraatF0"];
 assert(all(ismember(expected,string(R.Properties.VariableNames))),'Malformed Praat output columns.');
-for column=expected,R.(column)=str2double(string(R.(column)));end
+for column=expected
+    value=R.(column);
+    if isnumeric(value),R.(column)=double(value);else,R.(column)=str2double(string(value));end
+end
 assert(height(R)==sum(counts),'Praat frame count mismatch.');
 for j=1:2
     r=R(R.Window_ms==cfg.WindowMs(j),:);
@@ -791,7 +794,6 @@ for j=1:3
     paths(j)=fullfile(work,nativeNames(j)+".wav");
     frequency=120;if j>1,frequency=320;end
     signal=.35*sin(2*pi*frequency*t);pcm=int16(max(-32768,min(32767,round(signal*32768))));
-    vfWriteSyntheticNSP(fullfile(work,ids(j)+"_source_"+j+".nsp"),pcm,fs); % reference metadata below uses a parseable basename
     sourceFolder=fullfile(work,"source_"+j);mkdir(sourceFolder);sources(j)=fullfile(sourceFolder,ids(j)+"-a_n.nsp");
     vfWriteSyntheticNSP(sources(j),pcm,fs);audiowrite(paths(j),double(pcm)/32768,fs,'BitsPerSample',16);
 end
