@@ -17,8 +17,9 @@ end
 cfg.Diseases=reshape(string(cfg.Diseases),1,[]);
 assert(strlength(string(cfg.ActiveDisease))==0||ismember(string(cfg.ActiveDisease),cfg.Diseases),'ActiveDisease is outside the planned disease list.');
 cfg.Classifiers=reshape(string(cfg.Classifiers),1,[]);cfg.Rankers=reshape(string(cfg.Rankers),1,[]);
-assert(ismember(cfg.Stage,["all","training","benchmark"]),'Invalid Stage.');
+assert(ismember(cfg.Stage,["all","training","benchmark","sampling_check"]),'Invalid Stage.');
 rng(cfg.Seed,'twister');
+if cfg.Stage=="sampling_check",verifyTrainingSampling(cfg);return;end
 assert(license('test','Statistics_Toolbox'), 'Statistics Toolbox is required.');
 if cfg.QuickTest
     cfg.OutputDir = fullfile(cfg.OutputDir,'QUICK_TEST_NOT_FOR_INFERENCE');
@@ -101,7 +102,7 @@ end
 
 function cfg=configuration()
 cfg.InputDir = 'D:\SVD\meta\svd_wav\Features_Final_CycleFallback_HNRfix';
-cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final_Approved43';
+cfg.OutputDir = 'D:\SVD\meta\svd_wav\ModelResults_Final_Train30';
 % Edit disease membership ONLY here. Missing pairs are recorded, not invented.
 cfg.Diseases = ["Rekurrensparese","Hyperfunktionelle","Laryngitis", ...
     "Reinke Ödem","Spasmodische Dysphonie","Stimmlippenpolyp"];
@@ -109,16 +110,16 @@ cfg.Seed=1405; cfg.UseParallel=true; cfg.QuickTest=false; cfg.Resume=true;
 cfg.TestFraction=.20; cfg.MaxFolds=10;
 cfg.Classifiers=["SVM_Linear","SVM_Quadratic","SVM_RBF","KNN3","KNN5","RandomForest","NaiveBayes"];
 cfg.Rankers=["Ttest","CohenD","ReliefF","NCA"];
-% Full mode uses every training frame. Finite values are an explicitly
-% different, resource-limited experiment and enter the checkpoint signature.
-cfg.MaxTrainFramesPerSubject=Inf;
+% Predeclared uniform TRAINING-only sampling; validation/Test use all rows.
+% This is a separate experiment from the earlier all-training-frames run.
+cfg.MaxTrainFramesPerSubject=30;
 cfg.NumTrees=40; cfg.MinLeafSize=5; cfg.KNNNeighbors=5;
 cfg.SVMBackend='certified_primal'; % same C=1 hinge objective, explicit dual-gap certificate
 cfg.NCAIterations=60; cfg.ReliefNeighbors=10;
 cfg.CalibrationFraction=.20; % independent SUBJECT calibration for SVM
 cfg.Bootstrap=5000; cfg.Permutations=10000; cfg.Alpha=.05;
 cfg.TimeToleranceSec=.0051; cfg.EqualityTolerance=1e-10;
-cfg.ProtocolVersion='audited-cycle43-seven-models-adaptive-equalK-v6';
+cfg.ProtocolVersion='audited-cycle43-seven-models-adaptive-equalK-v7-train30';
 cfg.IncludeAdaptive=true; cfg.IncludeEqualCount=true;
 cfg.Stage="all"; % all | training (never predicts Test) | benchmark (training only)
 cfg.ActiveDisease=""; % Optional execution routing; preserves the full planned disease family.
@@ -553,7 +554,11 @@ parts=cell(kfold,1); todo=false(kfold,1);
 for k=1:kfold
     file=fullfile(cache,sprintf('Fold_%02d.mat',k));
     if cfg.Resume && isfile(file)
-        z=load(file,'part'); parts{k}=z.part;
+        z=load(file,'part');parts{k}=z.part;
+        if any(~isfinite(z.part.BA))
+            atomicCandidateCheckpoint(fullfile(cache,sprintf('Fold_%02d_partial.mat',k)),z.part,"RetryMissingCells","",0);
+            todo(k)=true;
+        end
     else
         todo(k)=true;
     end
@@ -616,7 +621,7 @@ end
 
 function t=candidateTable(cfg,p)
 counts=1:p;
-if cfg.QuickTest, counts=unique([1,ceil(p/2),p]); end
+if cfg.QuickTest, counts=unique([1,2,ceil(p/2),p]); end
 [C,R,K]=ndgrid(1:numel(cfg.Classifiers),1:numel(cfg.Rankers),counts);
 t=table(reshape(cfg.Classifiers(C(:)),[],1),reshape(cfg.Rankers(R(:)),[],1),K(:), ...
     'VariableNames',{'Classifier','Ranker','K'});
@@ -695,8 +700,10 @@ for r=1:numel(cfg.Rankers)
             catch err
                 part.Failures(end+1,:)={k,cfg.Classifiers(c),ranker,n,string(err.message)};
             end
+            if strlength(checkpoint)>0
+                atomicCandidateCheckpoint(checkpoint,part,cfg.Classifiers(c),ranker,n);
+            end
         end
-        if strlength(checkpoint)>0,atomicSave(checkpoint,'part',part);end
     end
 end
 end
@@ -1399,8 +1406,8 @@ atomicTable(t,fullfile(cfg.OutputDir,'Feature_Mapping.xlsx'),'Mapping');
 protocol=cfg; atomicSave(fullfile(cfg.OutputDir,'Run_Protocol.mat'),'protocol',protocol);
 grid=numel(cfg.Classifiers)*numel(cfg.Rankers);
 if cfg.QuickTest
-    base=(5+double(cfg.IncludeAdaptive))*3*grid*cfg.MaxFolds;
-    nested=2*3*grid*cfg.MaxFolds^2;
+    base=(5+double(cfg.IncludeAdaptive))*4*grid*cfg.MaxFolds;
+    nested=2*4*grid*cfg.MaxFolds^2;
 else
     base=(3*43+10+33+43*double(cfg.IncludeAdaptive))*grid*cfg.MaxFolds;
     nested=(10+33)*grid*cfg.MaxFolds^2;
@@ -1475,4 +1482,30 @@ end
 a=min(w,max(0,a+((lo+hi)/2)*y));feasibility=abs(sum(y.*a));q=X'*(a.*y);
 primal=.5*lambda*sum(theta(1:end-1).^2)+sum(w.*max(0,r));
 dual=sum(a)-sum(q.^2)/(2*lambda);
+end
+
+function atomicCandidateCheckpoint(file,complete,kind,ranker,count)
+% Numeric-only MAT-v7 checkpoint: fast and readable without MATLAB tables.
+% Final fold files retain all rankings/errors in the original rich format.
+part=struct('BA',complete.BA,'Sensitivity',complete.Sensitivity, ...
+    'LastClassifier',char(kind),'LastRanker',char(ranker),'LastK',count, ...
+    'CompletedCandidates',sum(isfinite(complete.BA)),'TotalCandidates',numel(complete.BA));
+if ~isempty(complete.Failures),part.FailureMessages=cellstr(complete.Failures.Error);end
+folder=fileparts(file);temporary=[tempname(folder) '.mat'];
+save(temporary,'part','-v7');movefile(temporary,file,'f');
+end
+
+function verifyTrainingSampling(cfg)
+assert(cfg.MaxTrainFramesPerSubject==30,'Sampling check expects the declared cap of 30.');
+d=struct('S',[ones(77,1);2*ones(101,1);3*ones(59,1)]);
+rows=trainingRows(d,[1;3],cfg);again=trainingRows(d,[1;3],cfg);
+assert(isequal(rows,again)&&numel(rows)==60&&numel(unique(rows))==60);
+assert(~any(d.S(rows)==2),'Held-out subject entered fitting rows.');
+for id=[1,3]
+    available=find(d.S==id);selected=rows(d.S(rows)==id);
+    assert(numel(selected)==30&&selected(1)==available(1)&&selected(end)==available(end));
+    assert(max(diff(selected))-min(diff(selected))<=1,'Nonuniform deterministic sampling.');
+end
+assert(numel(find(d.S==2))==101,'Validation rows were altered.');
+fprintf('TRAINING_ONLY_30_FRAME_SAMPLING_CHECKS_PASSED\n');
 end

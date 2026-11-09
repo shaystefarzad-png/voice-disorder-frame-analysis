@@ -1,0 +1,195 @@
+name: Approved Train30 selection and final evaluation
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        type: string
+        default: ''
+      attempt:
+        type: string
+        default: '1'
+  push:
+    paths:
+      - ci/approved-training30-request.json
+      - runResourceBoundTraining.m
+      - runResourceBoundFinal.m
+      - ci/summarize_training30.py
+      - .github/workflows/approved-training30.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: approved-training30
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      resume_id: ${{ steps.plan.outputs.resume_id }}
+      attempt: ${{ steps.plan.outputs.attempt }}
+      max_attempts: ${{ steps.plan.outputs.max_attempts }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          REQUEST_RESUME: ${{ inputs.resume_run_id }}
+          REQUEST_ATTEMPT: ${{ inputs.attempt }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path('ci/approved-training30-request.json').read_text())
+          resume=os.getenv('REQUEST_RESUME') or str(r.get('resume_run_id',''))
+          attempt=int(os.getenv('REQUEST_ATTEMPT') or r.get('attempt',1));maximum=int(r.get('max_attempts',4))
+          assert (not resume or resume.isdigit()) and 1<=attempt<=maximum<=4
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f'resume_id={resume}\nattempt={attempt}\nmax_attempts={maximum}\n')
+          PY
+  validate:
+    needs: plan
+    if: needs.plan.outputs.resume_id == ''
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify sampling, seven classifiers, all scenarios and checkpoint resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runSyntheticWorkflow
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-training30-validation
+          path: synthetic-test-artifacts/
+          retention-days: 30
+  train:
+    needs: [plan, validate]
+    if: always() && needs.plan.result == 'success' && (needs.validate.result == 'success' || needs.validate.result == 'skipped')
+    name: Train30 disease ${{ matrix.d }} without Test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_DISEASE_INDEX: ${{ matrix.d }}
+      VOICE_TRAIN30_ATTEMPT: ${{ needs.plan.outputs.attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore only this Train30 experiment
+        if: needs.plan.outputs.resume_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-training30-d${{ matrix.d }}
+          path: approved-training30-results/disease_${{ matrix.d }}/
+          run-id: ${{ needs.plan.outputs.resume_id }}
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: All classifiers and feature counts; training only
+        timeout-minutes: 320
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runResourceBoundTraining
+      - name: Inspect saved progress without evaluating Test
+        if: always()
+        run: |
+          python3 -m pip install --quiet numpy scipy h5py
+          python3 ci/summarize_training30.py
+      - name: Preserve this experiment's checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: approved-training30-d${{ matrix.d }}
+          path: approved-training30-results/disease_${{ matrix.d }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 1
+  continue-or-freeze:
+    needs: [plan, validate, train]
+    if: always() && !cancelled() && needs.plan.result == 'success' && needs.validate.result != 'failure'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      all_frozen: ${{ steps.decide.outputs.all_frozen }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: approved-training30-d*
+          path: progress-artifacts/
+          github-token: ${{ github.token }}
+      - id: decide
+        uses: actions/github-script@v7
+        env:
+          ATTEMPT: ${{ needs.plan.outputs.attempt }}
+          MAX_ATTEMPTS: ${{ needs.plan.outputs.max_attempts }}
+        with:
+          script: |
+            const fs=require('fs');
+            const reports=[];
+            for(let d=1;d<=6;d++) reports.push(JSON.parse(fs.readFileSync(`progress-artifacts/approved-training30-d${d}/Training_Progress.json`)));
+            const complete=reports.every(r=>r.ReadyForFinalEvaluation);
+            const attempt=Number(process.env.ATTEMPT), maximum=Number(process.env.MAX_ATTEMPTS);
+            const resume=!complete && attempt<maximum && reports.every(r=>r.CanResume);
+            core.setOutput('all_frozen',String(complete));
+            const status={run_id:context.runId,attempt,max_attempts:maximum,all_training_selections_frozen:complete,next_slice_requested:resume,test_evaluated:false,reports};
+            const path='ci-results/training30-latest-status.json';let sha;
+            try {sha=(await github.rest.repos.getContent({...context.repo,path})).data.sha;} catch(e){if(e.status!==404)throw e;}
+            await github.rest.repos.createOrUpdateFileContents({...context.repo,path,sha,message:'Record Train30 progress and continuation decision',content:Buffer.from(JSON.stringify(status,null,2)).toString('base64')});
+            if(resume) {
+              await github.rest.actions.createWorkflowDispatch({...context.repo,workflow_id:'approved-training30.yml',ref:'main',inputs:{resume_run_id:String(context.runId),attempt:String(attempt+1)}});
+              await core.summary.addRaw(`Training incomplete; slice ${attempt+1} requested from saved checkpoints. Test remains untouched.`).write();
+            } else if(!complete) {
+              core.warning('Training incomplete: computation budget reached or a numerical/setup failure needs diagnosis. No Test evaluation.');
+            }
+  final-evaluation:
+    needs: continue-or-freeze
+    if: always() && needs.continue-or-freeze.outputs.all_frozen == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: approved-training30-d*
+          path: training30-completed/
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Evaluate frozen choices once on Test and run planned statistics
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runResourceBoundFinal
+      - name: Publish final numeric report and main Excel workbooks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs');
+            for(const name of ['Final_Report.json','All_Diseases_Summary.xlsx','Statistical_Hypothesis_Validation.xlsx']) {
+              const path=`training30-final-results/${name}`;let sha;
+              try{sha=(await github.rest.repos.getContent({...context.repo,path})).data.sha;}catch(e){if(e.status!==404)throw e;}
+              await github.rest.repos.createOrUpdateFileContents({...context.repo,path,sha,message:'Publish preplanned Train30 final evaluation results',content:fs.readFileSync(`approved-training30-final/${name}`).toString('base64')});
+            }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-training30-final-results
+          path: approved-training30-final/
+          retention-days: 30
+          compression-level: 1

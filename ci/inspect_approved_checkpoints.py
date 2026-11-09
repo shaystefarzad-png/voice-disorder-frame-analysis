@@ -41,7 +41,7 @@ def spreadsheet(path):
   shared=[]
   if 'xl/sharedStrings.xml' in z.namelist():shared=[''.join(si.itertext()) for si in ET.fromstring(z.read('xl/sharedStrings.xml')).findall(NS+'si')]
   rows=[]
-  for row in ET.fromstring(z.read('xl/worksheets/sheet1.xml')).iter(NS+'row'):
+  for row in ET.fromstring(z.read(next(n for n in z.namelist() if n.startswith('xl/worksheets/') and n.endswith('.xml') and '/_rels/' not in n))).iter(NS+'row'):
    values={}
    for c in row:
     ref=c.attrib['r'];letters=re.match('[A-Z]+',ref)[0];index=0

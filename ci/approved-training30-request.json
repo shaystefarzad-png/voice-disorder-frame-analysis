@@ -1,0 +1,14 @@
+{
+  "request": "2026-11-09-start-separate-training30-experiment",
+  "resume_run_id": "",
+  "training_frame_cap": 30,
+  "sampling": "uniform_deterministic_per_training_subject",
+  "validation_frames": "all",
+  "test_frames": "all",
+  "test_evaluation": false,
+  "quick_test": false,
+  "max_folds": 10,
+  "all_classifier_ranker_feature_count_combinations": true,
+  "attempt": 1,
+  "max_attempts": 4
+}
