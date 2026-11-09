@@ -1,0 +1,60 @@
+name: Inspect approved training checkpoints without retraining
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ci/approved-checkpoint-inspect-request.json
+      - ci/inspect_approved_checkpoints.py
+      - .github/workflows/approved-checkpoint-inspection.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - id: request
+        run: |
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          r=json.loads(Path('ci/approved-checkpoint-inspect-request.json').read_text())
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              for key in ['training_run_id','benchmark_run_id']:
+                  assert str(r[key]).isdigit()
+                  f.write(key+'='+str(r[key])+'\n')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: approved-training-d*
+          path: inspection-checkpoints/
+          run-id: ${{ steps.request.outputs.training_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: approved-training-only-timing
+          path: inspection-benchmark/
+          run-id: ${{ steps.request.outputs.benchmark_run_id }}
+          github-token: ${{ github.token }}
+      - run: python3 -m pip install --quiet h5py numpy
+      - run: python3 ci/inspect_approved_checkpoints.py
+      - name: Publish compact numeric checkpoint report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'ci-results/approved-checkpoint-inspection.json';
+            let sha;
+            try { sha = (await github.rest.repos.getContent({...context.repo,path})).data.sha; }
+            catch (e) { if (e.status !== 404) throw e; }
+            await github.rest.repos.createOrUpdateFileContents({...context.repo,path,sha,
+              message: 'Record checkpoint progress and training runtime evidence',
+              content: fs.readFileSync('approved-checkpoint-inspection/report.json').toString('base64')});
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approved-checkpoint-inspection
+          path: approved-checkpoint-inspection/
+          retention-days: 30
