@@ -1,0 +1,489 @@
+{
+  "SourceTrainingRun": "42521512415",
+  "SourceBenchmarkRun": "42510207613",
+  "Diseases": [
+    {
+      "DiseaseIndex": 1,
+      "CheckpointFiles": 2,
+      "CompletedCandidateScores": 1978,
+      "ByClassifier": {
+        "SVM_Linear": 344,
+        "SVM_Quadratic": 344,
+        "SVM_RBF": 258,
+        "KNN3": 258,
+        "KNN5": 258,
+        "RandomForest": 258,
+        "NaiveBayes": 258
+      },
+      "Folds": [
+        {
+          "Group": "Rekurrensparese/cache_a6cb07187421df1d78fae9721685f2cd3fba77af7eafce6d2cd331f65958899e/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01_partial.mat",
+          "FiniteCandidateScores": 989,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 129,
+            "KNN3": 129,
+            "KNN5": 129,
+            "RandomForest": 129,
+            "NaiveBayes": 129
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "NCA",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Rekurrensparese/cache_a6cb07187421df1d78fae9721685f2cd3fba77af7eafce6d2cd331f65958899e/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02_partial.mat",
+          "FiniteCandidateScores": 989,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 129,
+            "KNN3": 129,
+            "KNN5": 129,
+            "RandomForest": 129,
+            "NaiveBayes": 129
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "NCA",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    },
+    {
+      "DiseaseIndex": 2,
+      "CheckpointFiles": 2,
+      "CompletedCandidateScores": 774,
+      "ByClassifier": {
+        "SVM_Linear": 172,
+        "SVM_Quadratic": 172,
+        "SVM_RBF": 86,
+        "KNN3": 86,
+        "KNN5": 86,
+        "RandomForest": 86,
+        "NaiveBayes": 86
+      },
+      "Folds": [
+        {
+          "Group": "Hyperfunktionelle/cache_3e7420e0af28c4aab71463c61a28a8e80396f05ab6bebacf79344f032b8cbfff/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01_partial.mat",
+          "FiniteCandidateScores": 387,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 86,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 43,
+            "KNN3": 43,
+            "KNN5": 43,
+            "RandomForest": 43,
+            "NaiveBayes": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "CohenD",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Hyperfunktionelle/cache_3e7420e0af28c4aab71463c61a28a8e80396f05ab6bebacf79344f032b8cbfff/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02_partial.mat",
+          "FiniteCandidateScores": 387,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 86,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 43,
+            "KNN3": 43,
+            "KNN5": 43,
+            "RandomForest": 43,
+            "NaiveBayes": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "CohenD",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    },
+    {
+      "DiseaseIndex": 3,
+      "CheckpointFiles": 2,
+      "CompletedCandidateScores": 1290,
+      "ByClassifier": {
+        "SVM_Linear": 258,
+        "SVM_Quadratic": 172,
+        "SVM_RBF": 172,
+        "KNN3": 172,
+        "KNN5": 172,
+        "RandomForest": 172,
+        "NaiveBayes": 172
+      },
+      "Folds": [
+        {
+          "Group": "Laryngitis/cache_eac57cbc0d85a22a66084cf685c66404db1b558f4594a0ad4ede3444fbef2b8e/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01_partial.mat",
+          "FiniteCandidateScores": 645,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 129,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 86,
+            "KNN3": 86,
+            "KNN5": 86,
+            "RandomForest": 86,
+            "NaiveBayes": 86
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "ReliefF",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Laryngitis/cache_eac57cbc0d85a22a66084cf685c66404db1b558f4594a0ad4ede3444fbef2b8e/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02_partial.mat",
+          "FiniteCandidateScores": 645,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 129,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 86,
+            "KNN3": 86,
+            "KNN5": 86,
+            "RandomForest": 86,
+            "NaiveBayes": 86
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "ReliefF",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    },
+    {
+      "DiseaseIndex": 4,
+      "CheckpointFiles": 4,
+      "CompletedCandidateScores": 2494,
+      "ByClassifier": {
+        "SVM_Linear": 430,
+        "SVM_Quadratic": 344,
+        "SVM_RBF": 344,
+        "KNN3": 344,
+        "KNN5": 344,
+        "RandomForest": 344,
+        "NaiveBayes": 344
+      },
+      "Folds": [
+        {
+          "Group": "Reinke__dem_438ad868/cache_85b3982e7d29ff737a3fb5a51cfaf260e5ab252e39d54e1a635695b32403c634/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01.mat",
+          "FiniteCandidateScores": 1204,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": null
+        },
+        {
+          "Group": "Reinke__dem_438ad868/cache_85b3982e7d29ff737a3fb5a51cfaf260e5ab252e39d54e1a635695b32403c634/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02.mat",
+          "FiniteCandidateScores": 1204,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": null
+        },
+        {
+          "Group": "Reinke__dem_438ad868/cache_85b3982e7d29ff737a3fb5a51cfaf260e5ab252e39d54e1a635695b32403c634/S1_25ms",
+          "Fold": 4,
+          "File": "Fold_04_partial.mat",
+          "FiniteCandidateScores": 43,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "Ttest",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Reinke__dem_438ad868/cache_85b3982e7d29ff737a3fb5a51cfaf260e5ab252e39d54e1a635695b32403c634/S1_25ms",
+          "Fold": 6,
+          "File": "Fold_06_partial.mat",
+          "FiniteCandidateScores": 43,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "Ttest",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    },
+    {
+      "DiseaseIndex": 5,
+      "CheckpointFiles": 4,
+      "CompletedCandidateScores": 2494,
+      "ByClassifier": {
+        "SVM_Linear": 430,
+        "SVM_Quadratic": 344,
+        "SVM_RBF": 344,
+        "KNN3": 344,
+        "KNN5": 344,
+        "RandomForest": 344,
+        "NaiveBayes": 344
+      },
+      "Folds": [
+        {
+          "Group": "Spasmodische_Dysphonie_ab6f8893/cache_7d0ef8bf19f283f3dc175848357962e7e0dce9d52a8897f4d881571ac1201982/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01.mat",
+          "FiniteCandidateScores": 1204,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": null
+        },
+        {
+          "Group": "Spasmodische_Dysphonie_ab6f8893/cache_7d0ef8bf19f283f3dc175848357962e7e0dce9d52a8897f4d881571ac1201982/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02.mat",
+          "FiniteCandidateScores": 1204,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": null
+        },
+        {
+          "Group": "Spasmodische_Dysphonie_ab6f8893/cache_7d0ef8bf19f283f3dc175848357962e7e0dce9d52a8897f4d881571ac1201982/S1_25ms",
+          "Fold": 4,
+          "File": "Fold_04_partial.mat",
+          "FiniteCandidateScores": 43,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "Ttest",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Spasmodische_Dysphonie_ab6f8893/cache_7d0ef8bf19f283f3dc175848357962e7e0dce9d52a8897f4d881571ac1201982/S1_25ms",
+          "Fold": 6,
+          "File": "Fold_06_partial.mat",
+          "FiniteCandidateScores": 43,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "Ttest",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    },
+    {
+      "DiseaseIndex": 6,
+      "CheckpointFiles": 4,
+      "CompletedCandidateScores": 3181,
+      "ByClassifier": {
+        "SVM_Linear": 516,
+        "SVM_Quadratic": 515,
+        "SVM_RBF": 430,
+        "KNN3": 430,
+        "KNN5": 430,
+        "RandomForest": 430,
+        "NaiveBayes": 430
+      },
+      "Folds": [
+        {
+          "Group": "Stimmlippenpolyp/cache_3ac5fe52ce3950881b11a2df33b8bd54ac8e927b03d13bec5743bf26e370d903/S1_25ms",
+          "Fold": 1,
+          "File": "Fold_01.mat",
+          "FiniteCandidateScores": 1204,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 172,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": null
+        },
+        {
+          "Group": "Stimmlippenpolyp/cache_3ac5fe52ce3950881b11a2df33b8bd54ac8e927b03d13bec5743bf26e370d903/S1_25ms",
+          "Fold": 2,
+          "File": "Fold_02.mat",
+          "FiniteCandidateScores": 1203,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 172,
+            "SVM_Quadratic": 171,
+            "SVM_RBF": 172,
+            "KNN3": 172,
+            "KNN5": 172,
+            "RandomForest": 172,
+            "NaiveBayes": 172
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_Quadratic",
+            "Ranker": "CohenD",
+            "K": 2
+          }
+        },
+        {
+          "Group": "Stimmlippenpolyp/cache_3ac5fe52ce3950881b11a2df33b8bd54ac8e927b03d13bec5743bf26e370d903/S1_25ms",
+          "Fold": 4,
+          "File": "Fold_04_partial.mat",
+          "FiniteCandidateScores": 387,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 86,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 43,
+            "KNN3": 43,
+            "KNN5": 43,
+            "RandomForest": 43,
+            "NaiveBayes": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "CohenD",
+            "K": 1
+          }
+        },
+        {
+          "Group": "Stimmlippenpolyp/cache_3ac5fe52ce3950881b11a2df33b8bd54ac8e927b03d13bec5743bf26e370d903/S1_25ms",
+          "Fold": 6,
+          "File": "Fold_06_partial.mat",
+          "FiniteCandidateScores": 387,
+          "GridCandidates": 1204,
+          "ByClassifier": {
+            "SVM_Linear": 86,
+            "SVM_Quadratic": 86,
+            "SVM_RBF": 43,
+            "KNN3": 43,
+            "KNN5": 43,
+            "RandomForest": 43,
+            "NaiveBayes": 43
+          },
+          "FirstUnfinishedCandidate": {
+            "Classifier": "SVM_RBF",
+            "Ranker": "CohenD",
+            "K": 1
+          }
+        }
+      ],
+      "Logs": [
+        {
+          "File": "Training_Execution_Log.txt",
+          "Tail": "Starting parallel pool (parpool) using the 'local' profile ...\nConnected to parallel pool with 2 workers.\n"
+        }
+      ],
+      "FrozenSelectionFiles": 0
+    }
+  ],
+  "BenchmarkTimings": [
+    {
+      "File": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba/Training_Runtime_Benchmark.xlsx",
+      "Error": "KeyError(\"There is no item named 'xl/worksheets/sheet1.xml' in the archive\")"
+    },
+    {
+      "File": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb/Training_Runtime_Benchmark.xlsx",
+      "Error": "KeyError(\"There is no item named 'xl/worksheets/sheet1.xml' in the archive\")"
+    }
+  ],
+  "TestEvaluation": "NOT_PERFORMED"
+}
