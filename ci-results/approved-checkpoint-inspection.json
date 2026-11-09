@@ -477,12 +477,508 @@
   ],
   "BenchmarkTimings": [
     {
-      "File": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba/Training_Runtime_Benchmark.xlsx",
-      "Error": "KeyError(\"There is no item named 'xl/worksheets/sheet1.xml' in the archive\")"
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.143609,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
     },
     {
-      "File": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb/Training_Runtime_Benchmark.xlsx",
-      "Error": "KeyError(\"There is no item named 'xl/worksheets/sheet1.xml' in the archive\")"
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.18836,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.9569,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "KNN3",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.977656,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "KNN5",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.812212,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "RandomForest",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 2.612664,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.01222,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.074949,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.789408,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.890541,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "KNN3",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.8132,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "KNN5",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.791385,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "RandomForest",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.8559,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.006533,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.028243,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.605078,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.722264,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "KNN3",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.341809,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "KNN5",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.298756,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "RandomForest",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.141012,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.007035,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.038651,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.740927,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.838988,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "KNN3",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.600541,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "KNN5",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.59079,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "RandomForest",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.619251,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 4890.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.004503,
+      "Experiment": "inspection-benchmark/pilot_30_frames_per_subject/Hyperfunktionelle/cache_cf248773bec95de9fca7f451b80d6d4681a42e26bf24d467df608ef81fba6aba"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.194783,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 119.262765,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 113.595253,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "KNN3",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 10.282208,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "KNN5",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 10.643377,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "RandomForest",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 31.426644,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S1_25ms",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.021377,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.156621,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 103.426036,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 126.202621,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "KNN3",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 10.964244,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "KNN5",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 11.068585,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "RandomForest",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 29.910594,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "S3A_Hybrid",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 43.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.019227,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.083482,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 69.741056,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 101.244803,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "KNN3",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.432518,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "KNN5",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 1.604196,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "RandomForest",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 16.392009,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Time25_Branch",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 10.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.009333,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_Linear",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.085679,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_Quadratic",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 91.255077,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "SVM_RBF",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 120.670059,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "KNN3",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 7.623991,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "KNN5",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 7.516493,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "RandomForest",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 24.975713,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
+    },
+    {
+      "Scenario": "Frequency75_Branch",
+      "Classifier": "NaiveBayes",
+      "FeatureCount": 33.0,
+      "TrainingFrames": 64874.0,
+      "TrainingSubjects": 163.0,
+      "FitPredictSeconds": 0.01652,
+      "Experiment": "inspection-benchmark/all_frames/Hyperfunktionelle/cache_028ce7d255f4d27f904c4dab7a196af4b0d6b96533322ee07112ac7c6d1206eb"
     }
   ],
   "TestEvaluation": "NOT_PERFORMED"
