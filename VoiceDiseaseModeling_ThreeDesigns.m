@@ -41,22 +41,22 @@ else
     atomicSave(protocolFile,'protocol',protocol);
 end
 cfg.DeadlineUTC=posixtime(datetime('now','TimeZone','UTC'))+cfg.RunBudgetHours*3600;
-healthy=loadPair(cfg,"Healthy",0,names);status=table();results=cell(0,1);paused=false;
+healthy=loadPair(cfg,"Healthy",0,names);status=table();paused=false;
 for repeat=repeats
     rcfg=cfg;rcfg.Seed=cfg.Seed+10000*(repeat-1);rcfg.RepeatIndex=repeat;
     for disease=cfg.Diseases
         if strlength(cfg.ActiveDisease)>0&&disease~=cfg.ActiveDisease,continue;end
         location=fullfile(cfg.OutputDir,sprintf('Repeat_%03d',repeat),safeName(disease));if ~isfolder(location),mkdir(location);end
-        complete=fullfile(location,'COMPLETE.mat');
+        complete=fullfile(location,'COMPLETE.mat');caseTimer=tic;
         try
             budget(cfg);
             if cfg.Resume&&isfile(complete),saved=load(complete,'result');result=saved.result;
             else
                 patient=loadPair(cfg,disease,1,names);
                 result=runThree(healthy,patient,disease,names,rcfg,location);
-                if cfg.Stage=="all",atomicSave(complete,'result',result);end
+                if cfg.Stage=="all",result.ElapsedSeconds=toc(caseTimer);atomicSave(complete,'result',result);end
             end
-            if cfg.Stage=="all",exportCase(result,location,cfg);results{end+1}=result;end %#ok<AGROW>
+            if cfg.Stage=="all",exportCase(result,location,cfg);printSelected(result);end %#ok<AGROW>
             status=[status;table(repeat,disease,"Completed_"+cfg.Stage,"",'VariableNames',{'Repeat','Disease','Status','Detail'})]; %#ok<AGROW>
         catch err
             failure=struct('Identifier',err.identifier,'Report',getReport(err,'extended','hyperlinks','off'));
@@ -189,7 +189,10 @@ for design=1:3
     vb=item.Vote.Best;vb.Classifier=item.Best{4}.Classifier+" + "+item.Best{5}.Classifier;
     vb.Ranker=item.Best{4}.Ranker+" + "+item.Best{5}.Ranker;
     summary=[summary;metricRow(disease,cfg.RepeatIndex,item.Tag,"S3B_Voting",vb, ...
-        numel(item.Models{4}.Columns)+numel(item.Models{5}.Columns),y(test),vh,sum(train))]; %#ok<AGROW>
+        numel(item.Models{4}.Columns)+numel(item.Models{5}.Columns),y(test),vh,sum(train))];
+    summary.VotingMethod(end)=finalVote.Method;summary.TimeWeight(end)=finalVote.Alpha;
+    summary.VoteTimeFeatures(end)=numel(item.Models{4}.Columns);summary.VoteFrequencyFeatures(end)=numel(item.Models{5}.Columns);
+    summary.GenuineVoting(end)=finalVote.TwoProbabilitySources&&summary.VoteTimeFeatures(end)>0&&summary.VoteFrequencyFeatures(end)>0; %#ok<AGROW>
     if isfield(item.Equal,'K')
         [vp,vh]=combineVote(eqp{4},eqp{5},item.Equal.Vote.FinalChoice);
         equalPredictions.(item.Tag+"_S3B_Voting_Probability")=vp;equalPredictions.(item.Tag+"_S3B_Voting_Prediction")=vh;
@@ -215,6 +218,15 @@ end
 
 function printError(report)
 escaped=strrep(strrep(strrep(report,'%','%25'),char(13),'%0D'),char(10),'%0A');fprintf(2,'::error title=Three-design study::%s\n',escaped);
+end
+
+function printSelected(result)
+for j=1:height(result.Summary)
+    r=result.Summary(j,:);
+    fprintf('%s | %s | %s | %s | %s | K=%d | CV Accuracy %.2f +/- %.2f%% | Accuracy %.2f%% | Sensitivity %.2f%% | Specificity %.2f%% | %.1f seconds\n', ...
+        r.Disease,r.Design,r.Scenario,r.Classifier,r.Ranker,r.FeatureCount,100*r.CVMeanAccuracy,100*r.CVStdAccuracy, ...
+        100*r.TestAccuracy,100*r.TestSensitivity,100*r.TestSpecificity,result.ElapsedSeconds);
+end
 end
 
 function search=searchCV(d,subjects,fold,cfg,cache,seed,useFS,caseRoot)
@@ -361,7 +373,9 @@ actual=best.K;if actual==0,actual=numel(order);end;assert(actual<=numel(order));
 rng(seed,'twister');model=fitModel(z(:,columns),p.Y,p.Weights,best.Classifier,p.FitMask,p.CalMask,p.Subjects,cfg);
 bundle=struct('Model',model,'Preprocessor',pre,'InputColumns',input,'Columns',columns, ...
     'Features',names(columns),'WindowFeatures',names,'RankingOrder',order,'RankingScores',score,'RankingDetails',detail, ...
-    'UsedTrainingSubjects',d.IDs(subjects),'Choice',best);
+    'UsedTrainingSubjects',d.IDs(subjects),'Choice',best, ...
+    'FitSubjectIDs',d.IDs(unique(p.Subjects(p.FitMask))),'CalibrationSubjectIDs',d.IDs(unique(p.Subjects(p.CalMask))), ...
+    'TrainingFrameCount',numel(p.Subjects));
 end
 
 function p=predictSubjects(bundle,d,subjects)
@@ -639,6 +653,7 @@ end
 function t=metricRow(disease,repeat,design,scenario,best,count,y,h,ntrain)
 m=metrics(y,h);t=table(disease,repeat,design,scenario,string(best.Classifier),string(best.Ranker),count, ...
     ntrain,numel(y),numel(y)/ntrain,'VariableNames',{'Disease','Repeat','Design','Scenario','Classifier','Ranker','FeatureCount','TrainSubjects','TestSubjects','TestTrainRatio'});
+t.VotingMethod="";t.TimeWeight=NaN;t.VoteTimeFeatures=NaN;t.VoteFrequencyFeatures=NaN;t.GenuineVoting=false;
 for field=["Accuracy","BalancedAccuracy","Sensitivity","Specificity","F1"]
     t.("CVMean"+field)=best.("Mean"+field);t.("CVStd"+field)=best.("Std"+field);
 end
@@ -659,12 +674,14 @@ for j=1:numel(r.Searches)
     writetable(sc.FoldRankings,temporary,'Sheet',sprintf('FoldRanks_%02d',j));
     drawCurves(sc,fullfile(out,'Figures'),r.SearchNames(j),cfg);
 end
-index=table((1:numel(r.SearchNames))',r.SearchNames,'VariableNames',{'CVSheetNumber','DesignAndBranch'});writetable(index,temporary,'Sheet','CV_Index');
+index=table((1:numel(r.SearchNames))',reshape(r.SearchNames,[],1),'VariableNames',{'CVSheetNumber','DesignAndBranch'});writetable(index,temporary,'Sheet','CV_Index');
 fields=fieldnames(r.Voting);
 for j=1:numel(fields)
     vote=r.Voting.(fields{j});writetable(vote.OuterChoices,temporary,'Sheet',sprintf('VotingOuter_%d',j));
     writetable(vote.FinalChoice.Grid,temporary,'Sheet',sprintf('VotingWeights_%d',j));writetable(vote.TrainingOOF,temporary,'Sheet',sprintf('VotingOOF_%d',j));
-    choice=vote.FinalChoice;choice=rmfield(choice,'Grid');choice.TimeFeatureCount=r.Summary.FeatureCount(r.Summary.Design==string(fields{j})&r.Summary.Scenario=="S3B_Voting");
+    choice=vote.FinalChoice;choice=rmfield(choice,'Grid');selected=r.Summary(r.Summary.Design==string(fields{j})&r.Summary.Scenario=="S3B_Voting",:);
+    choice.TimeFeatureCount=selected.VoteTimeFeatures;choice.FrequencyFeatureCount=selected.VoteFrequencyFeatures;
+    choice.TwoProbabilitySources=selected.GenuineVoting;
     writetable(struct2table(choice),temporary,'Sheet',sprintf('VotingChoice_%d',j));
 end
 movefile(temporary,file,'f');
