@@ -1,0 +1,41 @@
+name: Collect completed three-design pilot tables
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ci/collect_three_designs.py
+      - .github/workflows/collect-three-designs.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  collect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: three-designs-pilot-d*
+          path: downloaded-three-designs/
+          run-id: 42849039670
+          github-token: ${{ github.token }}
+      - run: python3 -m pip install --quiet openpyxl
+      - name: Read existing Excel summaries without any model fitting
+        run: python3 ci/collect_three_designs.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: three-designs-pilot-summary
+          path: three-designs-pilot-summary/
+      - name: Publish approved pilot summary tables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs=require('fs');
+            for (const filename of ['Pilot_Report.json','All_Six_Diseases_Pilot_Summary.xlsx']) {
+              const path=`three-designs-pilot-summary/${filename}`;
+              let sha;
+              try { sha=(await github.rest.repos.getContent({...context.repo,path})).data.sha; }
+              catch(e) {if(e.status!==404)throw e;}
+              await github.rest.repos.createOrUpdateFileContents({...context.repo,path,sha,message:'Collect completed pilot tables without retraining',content:fs.readFileSync(path).toString('base64')});
+            }
