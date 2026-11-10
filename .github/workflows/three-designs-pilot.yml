@@ -1,0 +1,70 @@
+name: Three designs accuracy validation and pilot
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - VoiceDiseaseModeling_ThreeDesigns.m
+      - runThreeDesignsValidation.m
+      - runThreeDesignsPilot.m
+      - .github/workflows/three-designs-pilot.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: three-designs-pilot
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Run every design on synthetic Excel and verify numerics and resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runThreeDesignsValidation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: three-designs-validation
+          path: three-designs-validation/
+          retention-days: 30
+  pilot:
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_DISEASE_INDEX: ${{ matrix.d }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore validated training CV scores only (no Test outcomes)
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-training30-d${{ matrix.d }}
+          path: three-designs-warm/
+          run-id: 42600373917
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Pilot repeat 1, all three designs, record actual elapsed time
+        timeout-minutes: 320
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runThreeDesignsPilot
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: three-designs-pilot-d${{ matrix.d }}
+          path: three-designs-pilot-results/
+          retention-days: 30
