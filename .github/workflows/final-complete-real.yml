@@ -1,0 +1,175 @@
+name: Final complete real-data modeling
+on:
+  push:
+    paths:
+      - runFinalCompleteReal.m
+      - ci/summarize_final_complete.py
+      - .github/workflows/final-complete-real.yml
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        type: string
+        default: ''
+      attempt:
+        type: string
+        default: '1'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: final-complete-real
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      resume_id: ${{ steps.plan.outputs.resume_id }}
+      attempt: ${{ steps.plan.outputs.attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        uses: actions/github-script@v7
+        env:
+          RESUME: ${{ inputs.resume_run_id }}
+          ATTEMPT: ${{ inputs.attempt }}
+        with:
+          script: |
+            const fs=require('fs'),crypto=require('crypto');
+            const expected='9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184';
+            if(crypto.createHash('sha256').update(fs.readFileSync('VoiceDiseaseModeling_Final_Complete.m')).digest('hex')!==expected) throw Error('Validated source changed');
+            const validation=await github.rest.actions.getWorkflowRun({...context.repo,run_id:44328819611});
+            if(validation.data.conclusion!=='success')throw Error('MATLAB validation was not successful');
+            const resume=process.env.RESUME||'',attempt=Number(process.env.ATTEMPT||1);
+            if((resume&&!/^\d+$/.test(resume))||!Number.isInteger(attempt)||attempt<1||attempt>4)throw Error('Invalid continuation');
+            core.setOutput('resume_id',resume);core.setOutput('attempt',String(attempt));
+  real:
+    needs: plan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_DISEASE_INDEX: ${{ matrix.d }}
+      VOICE_COMPLETE_ATTEMPT: ${{ needs.plan.outputs.attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore this exact real-data experiment
+        if: needs.plan.outputs.resume_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: final-complete-real-d${{ matrix.d }}
+          path: final-complete-real/disease_${{ matrix.d }}/
+          run-id: ${{ needs.plan.outputs.resume_id }}
+          github-token: ${{ github.token }}
+      - name: Read compatible training CV scores only, with independent replay checks
+        uses: actions/download-artifact@v4
+        with:
+          name: approved-training30-d${{ matrix.d }}
+          path: final-complete-warm/
+          run-id: 42600373917
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: All three designs on real data, all seven models, Accuracy and BA
+        timeout-minutes: 320
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalCompleteReal
+      - name: Record checkpoint progress
+        if: always()
+        run: python3 ci/summarize_final_complete.py
+      - name: Preserve completed results and checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-complete-real-d${{ matrix.d }}
+          path: final-complete-real/disease_${{ matrix.d }}/
+          retention-days: 30
+          compression-level: 1
+  continue-or-collect:
+    needs: [plan, real]
+    if: always() && !cancelled() && needs.plan.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      all_complete: ${{ steps.decide.outputs.all_complete }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-complete-real-d*
+          path: progress-artifacts/
+          github-token: ${{ github.token }}
+      - id: decide
+        uses: actions/github-script@v7
+        env:
+          ATTEMPT: ${{ needs.plan.outputs.attempt }}
+        with:
+          script: |
+            const fs=require('fs'),reports=[];
+            for(let d=1;d<=6;d++)reports.push(JSON.parse(fs.readFileSync(`progress-artifacts/final-complete-real-d${d}/Progress.json`)));
+            const complete=reports.every(r=>r.Complete),attempt=Number(process.env.ATTEMPT);
+            const resume=!complete&&attempt<4&&reports.every(r=>r.Complete||r.CanResume);
+            core.setOutput('all_complete',String(complete));
+            const status={run_id:context.runId,attempt,max_attempts:4,all_complete:complete,next_slice_requested:resume,repeated_splits:1,reports};
+            fs.writeFileSync('Final_Complete_Status.json',JSON.stringify(status,null,2));
+            if(resume)await github.rest.actions.createWorkflowDispatch({...context.repo,workflow_id:'final-complete-real.yml',ref:'main',inputs:{resume_run_id:String(context.runId),attempt:String(attempt+1)}});
+            if(!complete&&!resume)core.warning('Not all cases completed: inspect numerical/setup evidence or exhausted time budget.');
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-complete-status
+          path: Final_Complete_Status.json
+          retention-days: 30
+  collect:
+    needs: continue-or-collect
+    if: needs.continue-or-collect.outputs.all_complete == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    env:
+      VOICE_COMPLETE_COLLECT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-complete-real-d*
+          path: all-completed/
+          github-token: ${{ github.token }}
+      - name: Assemble only completed cases without selecting models again
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          out=Path('final-complete-results');out.mkdir(exist_ok=True)
+          for d in range(1,7):
+              source=Path('all-completed')/f'final-complete-real-d{d}'
+              for case in (source/'Repeat_001').iterdir():
+                  assert (case/'COMPLETE.mat').exists()
+                  shutil.copytree(case,out/'Repeat_001'/case.name,dirs_exist_ok=True)
+              if not (out/'Study_Protocol.mat').exists():shutil.copy2(source/'Study_Protocol.mat',out/'Study_Protocol.mat')
+          PY
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Aggregate all six completed case results and correct statistical families
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalCompleteReal
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-complete-real-all-results
+          path: final-complete-results/
+          retention-days: 30
+          compression-level: 1
