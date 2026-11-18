@@ -35,15 +35,57 @@ jobs:
         with:
           script: |
             const fs=require('fs'),crypto=require('crypto');
-            const expected='9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184';
+            const expected='51824ea885e25062e96ab37173413fca53836f8e337f0b297425c0c14199199d';
             if(crypto.createHash('sha256').update(fs.readFileSync('VoiceDiseaseModeling_Final_Complete.m')).digest('hex')!==expected) throw Error('Validated source changed');
             const validation=await github.rest.actions.getWorkflowRun({...context.repo,run_id:44328819611});
             if(validation.data.conclusion!=='success')throw Error('MATLAB validation was not successful');
-            const resume=process.env.RESUME||'',attempt=Number(process.env.ATTEMPT||1);
+            const resume=process.env.RESUME||'44334991757',attempt=Number(process.env.ATTEMPT||2);
             if((resume&&!/^\d+$/.test(resume))||!Number.isInteger(attempt)||attempt<1||attempt>4)throw Error('Invalid continuation');
             core.setOutput('resume_id',resume);core.setOutput('attempt',String(attempt));
-  real:
+  validate-repair:
     needs: plan
+    if: needs.plan.outputs.attempt == '1' || needs.plan.outputs.attempt == '2'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore actual failed-case checkpoints to verify numerical-only migration
+        uses: actions/download-artifact@v4
+        with:
+          name: final-complete-real-d2
+          path: repair-resume-check/
+          run-id: 44334991757
+          github-token: ${{ github.token }}
+      - name: Verify scientific code and checkpoint compatibility
+        run: python3 ci/check_quadratic_repair.py
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify exact kernel, certified optimization and actual training regression
+        uses: matlab-actions/run-command@v2
+        with:
+          command: VoiceDiseaseModeling_Final_Complete(struct('Stage',"quadratic_check")); VoiceDiseaseModeling_Final_Complete(struct('Stage',"quadratic_real_check",'InputDir',fullfile(pwd,'datasets','approved-cycle43-v5')))
+      - name: Verify the saved real protocol signature and window Fold cache identity
+        uses: matlab-actions/run-command@v2
+        with:
+          command: VoiceDiseaseModeling_Final_Complete(struct('Stage',"resume_check",'InputDir',fullfile(pwd,'datasets','approved-cycle43-v5'),'OutputDir',fullfile(pwd,'repair-resume-check'),'RunBudgetHours',5,'UseParallel',false,'ResumeSourceSHA',"9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184",'ResumeExecutionSHA',"51824ea885e25062e96ab37173413fca53836f8e337f0b297425c0c14199199d"))
+      - name: Verify all modeling designs and checkpoint resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalCompleteValidation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quadratic-repair-validation
+          path: |
+            quadratic-repair-validation/
+            final-complete-validation/
+            Quadratic_Repair_Compatibility.json
+          retention-days: 30
+  real:
+    needs: [plan, validate-repair]
+    if: always() && needs.plan.result == 'success' && (needs.validate-repair.result == 'success' || needs.validate-repair.result == 'skipped')
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     strategy:

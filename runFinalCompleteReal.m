@@ -3,7 +3,7 @@ function runFinalCompleteReal
 root=fileparts(mfilename('fullpath'));collect=strcmp(getenv('VOICE_COMPLETE_COLLECT'),'1');
 diseases=["Rekurrensparese","Hyperfunktionelle","Laryngitis", ...
     ("Reinke "+string(char(214))+"dem"),"Spasmodische Dysphonie","Stimmlippenpolyp"];
-expected="9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184";
+expected="51824ea885e25062e96ab37173413fca53836f8e337f0b297425c0c14199199d";
 assert(string(realSHA(fullfile(root,'VoiceDiseaseModeling_Final_Complete.m')))==expected,'Validated model source changed.');
 input=fullfile(root,'datasets','approved-cycle43-v5');manifest=jsondecode(fileread(fullfile(input,'manifest.json')));
 for j=1:numel(manifest),assert(strcmp(realSHA(fullfile(input,manifest(j).File)),manifest(j).PackedSHA256),'Input integrity mismatch.');end
@@ -18,7 +18,8 @@ end
 if ~isfolder(output),mkdir(output);end
 options=struct('InputDir',input,'OutputDir',output,'Diseases',diseases,'ActiveDisease',active, ...
     'RepeatIndices',1,'PilotMode',true,'NumRepeats',100,'UseParallel',true,'Resume',true,'QuickTest',false, ...
-    'Stage',"all",'WarmStartRoot',fullfile(root,'final-complete-warm'),'RunBudgetHours',5);
+    'Stage',"all",'WarmStartRoot',fullfile(root,'final-complete-warm'),'RunBudgetHours',5, ...
+    'ResumeSourceSHA',"9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184",'ResumeExecutionSHA',expected);
 attempt=str2double(getenv('VOICE_COMPLETE_ATTEMPT'));if isnan(attempt),attempt=1;end
 invocation=struct('DiseaseIndex',index,'Attempt',attempt,'SourceSHA',expected,'Repeat',1,'QuickTest',false);
 writeJSON(fullfile(output,'Invocation.json'),invocation);

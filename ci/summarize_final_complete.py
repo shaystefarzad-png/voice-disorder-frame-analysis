@@ -3,7 +3,7 @@ import os,json,hashlib
 from pathlib import Path
 index=int(os.environ['VOICE_DISEASE_INDEX']);root=Path('final-complete-real')/f'disease_{index}';root.mkdir(parents=True,exist_ok=True)
 source=hashlib.sha256(Path('VoiceDiseaseModeling_Final_Complete.m').read_bytes()).hexdigest()
-expected='9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184'
+expected='51824ea885e25062e96ab37173413fca53836f8e337f0b297425c0c14199199d'
 outfile=root/'CaseOutcome.json';outcome=json.loads(outfile.read_text()) if outfile.exists() else {}
 complete=bool(outcome.get('Complete')) and bool(list(root.rglob('COMPLETE.mat'))) and (root/'Final_Report.json').exists()
 paused=bool(outcome.get('PausedBudget'))

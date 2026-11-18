@@ -10,7 +10,9 @@ if nargin>0
 end
 cfg.Diseases=reshape(string(cfg.Diseases),1,[]);
 if cfg.Stage=="selftest",selftest(cfg);return;end
-assert(ismember(cfg.Stage,["training","all"]),'Invalid Stage.');
+if cfg.Stage=="quadratic_check",quadraticRepairChecks(cfg);return;end
+if cfg.Stage=="quadratic_real_check",quadraticRealChecks(cfg);return;end
+assert(ismember(cfg.Stage,["training","all","resume_check"]),'Invalid Stage.');
 assert(license('test','Statistics_Toolbox'),'Statistics and Machine Learning Toolbox required.');
 assert(all(cfg.VotingAlphas>0&cfg.VotingAlphas<1),'Voting weights must be interior.');
 assert(cfg.ComparableCountTolerance>=0);
@@ -28,11 +30,17 @@ if cfg.UseParallel
     assert(license('test','Distrib_Computing_Toolbox'),'Parallel toolbox required.');
     pool=gcp('nocreate');if isempty(pool),parpool('local',2);else,assert(pool.NumWorkers==2);end
 end
-routed=cfg;for field={'OutputDir','WarmStartRoot','UseParallel','Resume','Stage','RepeatIndices','PilotMode','ActiveDisease','DeadlineUTC','WindowCacheDir','StudySignature'},routed=rmfield(routed,field);end
+routed=cfg;for field={'OutputDir','WarmStartRoot','UseParallel','Resume','Stage','RepeatIndices','PilotMode','ActiveDisease','DeadlineUTC','WindowCacheDir','StudySignature','ResumeSourceSHA','ResumeExecutionSHA','ForceQuadraticFallback'},routed=rmfield(routed,field);end
 source=fileSHA(string(mfilename('fullpath'))+".m");
 names=featureNames();allFiles=[featurePath(cfg,25,"Healthy"),featurePath(cfg,75,"Healthy")];
 for disease=cfg.Diseases,allFiles=[allFiles,featurePath(cfg,25,disease),featurePath(cfg,75,disease)];end %#ok<AGROW>
-manifest=string(jsonencode(routed))+source;
+identitySource=source;
+if strlength(cfg.ResumeSourceSHA)>0
+    assert(source==string(cfg.ResumeExecutionSHA),'Repair execution source does not match the admitted SHA.');
+    assert(string(cfg.ResumeSourceSHA)=="9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184",'Unrecognized source migration.');
+    identitySource=string(cfg.ResumeSourceSHA);
+end
+manifest=string(jsonencode(routed))+identitySource;
 for file=allFiles,assert(isfile(file),'Missing input: %s',file);manifest=manifest+fileSHA(file);end
 signature=string(hashBytes(unicode2native(char(manifest),'UTF-8')));
 protocolFile=fullfile(cfg.OutputDir,'Study_Protocol.mat');
@@ -42,8 +50,19 @@ else
     protocol=struct('Signature',signature,'Configuration',cfg,'SourceSHA',source,'Role',"Exploratory after prior Test inspection");
     atomicSave(protocolFile,'protocol',protocol);
 end
+% Retain the scientific signature (and all inner Fold seeds/cache keys) only
+% under an explicitly SHA-admitted, tested numerical repair.
+repair=struct('CurrentSourceSHA',string(source),'ScientificIdentitySourceSHA',identitySource, ...
+    'ExistingSignature',signature,'Scope',"Failed quadratic fits only; converged models and selection unchanged");
+repairFile=fullfile(cfg.OutputDir,'Numerical_Repair_Provenance.mat');
+if ~isfile(repairFile),atomicSave(repairFile,'repair',repair);
+else,prior=load(repairFile,'repair');if ~isequal(prior.repair,repair),atomicSave(repairFile,'repair',repair);end;end
 cfg.DeadlineUTC=posixtime(datetime('now','TimeZone','UTC'))+cfg.RunBudgetHours*3600;
 cfg.StudySignature=signature;cfg.WindowCacheDir=fullfile(cfg.OutputDir,'WindowProbeCache');
+if cfg.Stage=="resume_check"
+    assert(strlength(cfg.ResumeSourceSHA)>0&&isfile(protocolFile));
+    fprintf('NUMERICAL_REPAIR_EXISTING_PROTOCOL_ACCEPTED_WITH_IDENTICAL_SPLITS_AND_CACHE_KEYS\n');return;
+end
 healthy=loadPair(cfg,"Healthy",0,names);status=table();paused=false;
 for repeat=repeats
     rcfg=cfg;rcfg.Seed=cfg.Seed+10000*(repeat-1);rcfg.RepeatIndex=repeat;
@@ -89,7 +108,8 @@ cfg=struct('InputDir','D:\SVD\meta\svd_wav\Features', ...
     'ReliefNeighbors',10,'CalibrationFraction',.20,'TimeToleranceSec',.0051,'EqualityTolerance',1e-10, ...
     'IncludeComparableCount',true,'ComparableCountTolerance',5,'AdaptiveFeatureSelection',false,'WindowProbeFolds',10, ...
     'VotingAlphas',.1:.1:.9,'WarmStartRoot',"",'RepeatIndex',1,'Alpha',.05, ...
-    'BootstrapIterations',5000,'PermutationIterations',5000,'WindowCacheDir',"",'StudySignature',"",'ProtocolVersion',"Complete_AccuracyAndBA_v2");
+    'BootstrapIterations',5000,'PermutationIterations',5000,'WindowCacheDir',"",'StudySignature',"",'ProtocolVersion',"Complete_AccuracyAndBA_v2", ...
+    'ResumeSourceSHA',"",'ResumeExecutionSHA',"",'ForceQuadraticFallback',false);
 end
 
 function result=runThree(h,p,disease,names,cfg,cache)
@@ -1159,6 +1179,10 @@ switch kind
                 % Fixed numerical convention; no response labels set the scale.
                 scaleRule=sqrt(size(x,2));
             end
+            if kind=="SVM_Quadratic"&&cfg.ForceQuadraticFallback
+                initialInfo=struct('Converged',false,'ReasonForConvergence',"Forced software-test path");kernelScale=scaleRule;
+                svm=struct('ConvergenceInfo',initialInfo);
+            else
             svm=fitcsvm(x(fitMask,:),y(fitMask),'KernelFunction',char(kernel), ...
                 kernelArgs{:},'KernelScale',scaleRule,'BoxConstraint',1, ...
                 'Standardize',false,'ClassNames',[0;1],'Prior','uniform', ...
@@ -1174,10 +1198,16 @@ switch kind
                     'Weights',w(fitMask),'Solver','ISDA','CacheSize',cfg.KernelCacheMB, ...
                     'IterationLimit',1000000,'KKTTolerance',1e-3);
             end
+            end
             model.SolverInfo=struct('InitialSMO',initialInfo,'Final',svm.ConvergenceInfo, ...
                 'KernelScale',kernelScale);
-            assert(svm.ConvergenceInfo.Converged,'%s scale=%.6g did not converge. SMO: %s Final: %s', ...
-                kind,kernelScale,jsonencode(initialInfo),jsonencode(svm.ConvergenceInfo));
+            if ~svm.ConvergenceInfo.Converged&&kind=="SVM_Quadratic"
+                [svm,certificate]=fitCertifiedQuadraticSVM(x(fitMask,:),y(fitMask),w(fitMask),kernelScale);
+                model.SolverInfo.CertifiedQuadratic=certificate;model.SolverInfo.Final=certificate;
+            else
+                assert(svm.ConvergenceInfo.Converged,'%s scale=%.6g did not converge. SMO: %s Final: %s', ...
+                    kind,kernelScale,jsonencode(initialInfo),jsonencode(svm.ConvergenceInfo));
+            end
         elseif strcmp(cfg.SVMBackend,'certified_primal')
             wf=w(fitMask);yf=y(fitMask);
             for cls=0:1,wf(yf==cls)=.5*wf(yf==cls)/sum(wf(yf==cls));end
@@ -1212,11 +1242,7 @@ switch kind
                 'BoxConstraint',1,'Standardize',false,'ClassNames',[0;1], ...
                 'Prior','uniform','Weights',w(fitMask),'Solver','SMO');
         end
-        if isstruct(svm) && isfield(svm,'Type') && strcmp(svm.Type,'certified_linear_svm')
-            raw=x(calMask,:)*svm.Beta+svm.Bias;
-        else
-            [~,scores]=predict(svm,x(calMask,:));raw=scores(:,svm.ClassNames==1);
-        end
+        raw=svmDecision(svm,x(calMask,:));
         wc=subjectWeights(subject(calMask),y(calMask));
         model.Core=svm; model.Calibration=fitPlatt(raw,y(calMask),wc);
     case {"KNN","KNN3","KNN5"}
@@ -1281,11 +1307,7 @@ switch model.Kind
     case "EmptyBranch"
         p=.5*ones(size(x,1),1);
     case {"SVM","SVM_Linear","SVM_Quadratic","SVM_RBF"}
-        if isstruct(model.Core) && isfield(model.Core,'Type') && strcmp(model.Core.Type,'certified_linear_svm')
-            margin=x*model.Core.Beta+model.Core.Bias;
-        else
-            [~,sc]=predict(model.Core,x);margin=sc(:,model.Core.ClassNames==1);
-        end
+        margin=svmDecision(model.Core,x);
         b=model.Calibration; p=sigmoid([ones(size(margin)),(margin-b.Mu)/b.Scale]*b.Beta);
     case "NaiveBayes"
         logp=zeros(size(x,1),2);
@@ -1465,3 +1487,104 @@ score(~isfinite(score))=-realmax;
 [~,order]=sortrows([-score,(1:p)'],[1 2]); order=order(:)';
 end
 
+
+function phi=quadraticMap(x,scale)
+% Exact nonconstant map: 1 + phi(x)*phi(z)' = (1+x*z'/scale^2)^2.
+% The constant coordinate is redundant with the unregularized SVM bias;
+% its minimum-norm coefficient is zero, so it can be omitted exactly.
+p=size(x,2);z=x/scale;phi=zeros(size(x,1),p+p*(p+1)/2);phi(:,1:p)=sqrt(2)*z;k=p;
+for i=1:p
+    for j=i:p
+        k=k+1;factor=sqrt(2);if i==j,factor=1;end
+        phi(:,k)=factor*z(:,i).*z(:,j);
+    end
+end
+end
+
+function [svm,info,alpha]=fitCertifiedQuadraticSVM(x,y,w,scale)
+phi=quadraticMap(x,scale);w=double(w(:));y=double(y(:));
+for cls=0:1,w(y==cls)=.5*w(y==cls)/sum(w(y==cls));end
+[linear,info,alpha]=fitCertifiedLinearSVM(phi,y,w,1/numel(y));
+svm=struct('Type','certified_quadratic_svm','Beta',linear.Beta,'Bias',linear.Bias, ...
+    'ClassNames',[0;1],'KernelScale',scale,'InputDimension',size(x,2));
+info.Backend='exact_quadratic_map_certified_primal';info.KernelScale=scale;
+info.OriginalDimension=size(x,2);info.InternalMapDimension=size(phi,2);
+end
+
+function margin=svmDecision(core,x)
+if isstruct(core)&&isfield(core,'Type')
+    if strcmp(core.Type,'certified_quadratic_svm')
+        assert(size(x,2)==core.InputDimension);margin=quadraticMap(x,core.KernelScale)*core.Beta+core.Bias;
+    elseif strcmp(core.Type,'certified_linear_svm'),margin=x*core.Beta+core.Bias;
+    else,error('Unknown certified SVM representation.');end
+else
+    [~,score]=predict(core,x);margin=score(:,core.ClassNames==1);
+end
+end
+
+function quadraticRepairChecks(cfg)
+rng(1405,'twister');results=table();
+for p=[1,3,5]
+    x=randn(70,p);z=randn(55,p);scale=sqrt(p);
+    exact=(1+(x*z')/(scale^2)).^2;mapped=1+quadraticMap(x,scale)*quadraticMap(z,scale)';
+    assert(max(abs(exact-mapped),[],'all')<1e-10,'Quadratic kernel identity failed.');
+end
+for test=1:4
+    n=400;p=1;if test==4,p=3;end
+    x=randn(n,p);y=[zeros(n/2,1);ones(n/2,1)];x=x+.4*y;
+    if test==2,x(1:10,:)=15*x(1:10,:);end
+    if test==3,x(:)=0;end
+    w=1+mod((1:n)',5);for cls=0:1,w(y==cls)=.5*w(y==cls)/sum(w(y==cls));end
+    scale=sqrt(p);[model,info,alpha]=fitCertifiedQuadraticSVM(x,y,w,scale);phi=quadraticMap(x,scale);signed=2*y-1;
+    margin=svmDecision(model,x);primal=.5/n*sum(model.Beta.^2)+sum(w.*max(0,1-signed.*margin));
+    q=phi'*(signed.*alpha);dual=sum(alpha)-.5*n*sum(q.^2);
+    assert(abs(primal-info.PrimalObjective)<1e-9&&primal-dual<=1e-5&&primal-dual>=-1e-8);
+    assert(all(alpha>=-1e-14&alpha<=w+1e-14)&&abs(signed'*alpha)<1e-10);
+    if test==1||test==4
+        ref=fitcsvm(phi,y,'KernelFunction','linear','BoxConstraint',1,'Standardize',false,'Prior','uniform','Weights',w,'ClassNames',[0;1]);
+        assert(ref.ConvergenceInfo.Converged);refMargin=phi*ref.Beta+ref.Bias;
+        reference=.5/n*sum(ref.Beta.^2)+sum(w.*max(0,1-signed.*refMargin));
+        assert(abs(primal-reference)<2e-3,'Independent reference objective mismatch.');
+        poly=fitcsvm(x,y,'KernelFunction','polynomial','PolynomialOrder',2,'KernelScale',scale, ...
+            'BoxConstraint',1,'Standardize',false,'Prior','uniform','Weights',w,'ClassNames',[0;1]);
+        if poly.ConvergenceInfo.Converged
+            [~,s]=predict(poly,x);native=s(:,poly.ClassNames==1);away=abs(native)>.05;
+            assert(mean((margin(away)>=0)==(native(away)>=0))>.98,'Native polynomial prediction mismatch.');
+        end
+    end
+    % Exercise the actual production fallback, including held-out calibration.
+    fit=false(n,1);fit([1:150,n/2+1:n/2+150])=true;cal=~fit;forced=cfg;forced.ForceQuadraticFallback=true;
+    full=fitModel(x,y,w,"SVM_Quadratic",fit,cal,(1:n)',forced);prob=modelProbability(full,x);
+    assert(strcmp(full.Core.Type,'certified_quadratic_svm')&&all(isfinite(prob))&&all(prob>=0&prob<=1));
+    results=[results;table(test,p,info.PrimalDualGap,info.DualFeasibility,info.Seconds)]; %#ok<AGROW>
+end
+out='quadratic-repair-validation';if ~isfolder(out),mkdir(out);end
+writetable(results,fullfile(out,'Certified_Quadratic_Checks.csv'));
+fprintf('EXACT_QUADRATIC_KERNEL_AND_CERTIFIED_FALLBACK_CHECKS_PASSED\n');
+end
+
+function quadraticRealChecks(cfg)
+% Numerical regression on actual training data only; no Test predictions.
+names=featureNames();h=loadPair(cfg,"Healthy",0,names);patient=loadPair(cfg,"Hyperfunktionelle",1,names);
+a=[h.A(h.IA,:);patient.A(patient.IA,:)];b=[h.B(h.IB,:);patient.B(patient.IB,:)];
+[ids,~,s]=unique(a.SubjectID,'sorted');y=accumarray(s,double(a.Label),[],@mean);
+[train,~]=holdoutSubjects(y,cfg.TestFraction,cfg.Seed);training=find(train);fold=groupFolds(y(train),cfg.MaxFolds,cfg.Seed+1);
+results=table();for outer=[1,ceil(max(fold)/2)]
+ tr=training(fold~=outer);[fitIDs,~]=calibrationSplit(tr,y,cfg);
+ for ms=[25,75]
+    t=a;if ms==75,t=b;end
+    d=makeData(double(t{:,cellstr(names.All)}),s,y,ids,names.All);
+    rows=trainingRows(d,fitIDs,cfg);pre=fitPreprocessor(d.X(rows,:));z=applyPreprocessor(d.X(rows,:),pre);
+    label=y(s(rows));weight=subjectWeights(s(rows),label);
+    for j=1:43
+        [model,info]=fitCertifiedQuadraticSVM(z(:,j),label,weight,1);
+        margin=svmDecision(model,z(:,j));assert(all(isfinite(margin))&&info.PrimalDualGap<=1e-5);
+        results=[results;table(outer,ms,names.All(j),info.PrimalDualGap,info.Seconds, ...
+            'VariableNames',{'TrainingOuterFold','WindowMS','Feature','CertifiedGap','Seconds'})]; %#ok<AGROW>
+    end
+ end
+end
+out='quadratic-repair-validation';if ~isfolder(out),mkdir(out);end
+writetable(results,fullfile(out,'Actual_Training_Quadratic_Regression.csv'));
+fprintf('ACTUAL_TRAINING_QUADRATIC_REGRESSION_PASSED_WITHOUT_TEST_PREDICTION\n');
+end
