@@ -110,7 +110,7 @@ for j=1:5,base{j}.AdaptiveMode="fixed";base{j}.Token=disease;end
 adaptive=makeData([x25,x75],s,y,ids,names.All);adaptive.Token=disease;adaptive.AdaptiveMode="all";
 adaptive25=adaptive;adaptive25.AdaptiveMode="25";adaptive75=adaptive;adaptive75.AdaptiveMode="75";
 summary=table();predictions=table(ids(test),y(test),'VariableNames',{'SubjectID','Label'});
-features=table();windows=table();finalRanks=table();windowScores=table();searches={};searchNames=strings(0,1);choices=struct();bundles={};evaluation={};votingDetails=struct();equalSummaries=table();equalPredictions=predictions;
+features=table();windows=table();finalRanks=table();windowScores=table();countCurves=table();searches={};searchNames=strings(0,1);choices=struct();bundles={};evaluation={};votingDetails=struct();equalSummaries=table();equalPredictions=predictions;
 for design=1:3
     tag=["D1_FS","D2_NoFS","D3_Adaptive"];tag=tag(design);where=fullfile(cache,tag);
     if ~isfolder(where),mkdir(where);end
@@ -133,6 +133,7 @@ for design=1:3
     equal=struct();
     if cfg.IncludeComparableCount&&useFS
         [equal.K,equal.Choices,equal.Curve]=chooseBudget(sc,cfg);
+        curve=equal.Curve;curve.Design=repmat(tag,height(curve),1);countCurves=[countCurves;curve]; %#ok<AGROW>
         equal.Vote=selectVote(data{4},data{5},find(train),fold(train),sc{4},sc{5},cfg, ...
             fullfile(where,'ComparableVoting'),useFS,equal.K,cache);
     end
@@ -219,7 +220,7 @@ end
 result=struct('Disease',disease,'Repeat',cfg.RepeatIndex,'Summary',summary,'Predictions',predictions, ...
     'ComparableCountSummary',equalSummaries,'ComparablePredictions',equalPredictions,'Cohort',cohort, ...
     'Matching',[h.Log;p.Log],'SelectedFeatures',features,'AdaptiveWindows',windows, ...
-    'WindowProbeScores',windowScores,'SubjectInventory',subjectInventory(h,p),'FinalRankings',finalRanks,'Searches',{searches},'SearchNames',searchNames,'Voting',votingDetails, ...
+    'ComparableCountCurves',countCurves,'WindowProbeScores',windowScores,'SubjectInventory',subjectInventory(h,p),'FinalRankings',finalRanks,'Searches',{searches},'SearchNames',searchNames,'Voting',votingDetails, ...
     'ExploratoryAfterPriorTestSeen',true,'TrainingFrameCap',cfg.MaxTrainFramesPerSubject);
 end
 
@@ -391,6 +392,7 @@ bundle=struct('Model',model,'Preprocessor',pre,'InputColumns',input,'Columns',co
     'UsedTrainingSubjects',d.IDs(subjects),'Choice',best, ...
     'FitSubjectIDs',d.IDs(unique(p.Subjects(p.FitMask))),'CalibrationSubjectIDs',d.IDs(unique(p.Subjects(p.CalMask))), ...
     'TrainingFrameCount',numel(p.Subjects),'WindowProbeScores',table());
+if ~startsWith(best.Classifier,"SVM"),bundle.FitSubjectIDs=d.IDs(subjects);bundle.CalibrationSubjectIDs=strings(0,1);end
 if d.AdaptiveMode~="fixed"
     [fitIDs,~]=calibrationSplit(subjects,d.Y,cfg);[~,bundle.WindowProbeScores]=selectWindows(d,fitIDs,cfg);
 end
@@ -613,7 +615,9 @@ for anchor=1:maximum
     value=struct('MeanAccuracy',mean(cellfun(@(x)x.MeanAccuracy,selected(1:3))), ...
         'StdAccuracy',mean(cellfun(@(x)x.StdAccuracy,selected(1:3))), ...
         'Sensitivity',mean(cellfun(@(x)x.Sensitivity,selected(1:3))),'K',anchor);
-    row=struct2table(value);row.K1=selected{1}.K;row.K2=selected{2}.K;row.KHybrid=selected{3}.K;
+    row=struct2table(value);
+    row.MeanBalancedAccuracy=mean(cellfun(@(x)x.MeanBalancedAccuracy,selected(1:3)));
+    row.K1=selected{1}.K;row.K2=selected{2}.K;row.KHybrid=selected{3}.K;
     row.KVoting=selected{4}.K+selected{5}.K;curve=[curve;row]; %#ok<AGROW>
     if ~found||isBetter(value,winner,cfg),winner=value;count=anchor;choices=selected;found=true;end
 end
@@ -710,6 +714,7 @@ writetable(r.SubjectInventory,temporary,'Sheet','SubjectInventory');
 if ~isempty(r.WindowProbeScores),writetable(r.WindowProbeScores,temporary,'Sheet','WindowProbeCV');end
 writetable(r.SelectedFeatures,temporary,'Sheet','SelectedFeatures');writetable(r.AdaptiveWindows,temporary,'Sheet','AdaptiveWindows');
 if ~isempty(r.FinalRankings),writetable(r.FinalRankings,temporary,'Sheet','FinalTrainingRanks');end
+if ~isempty(r.ComparableCountCurves),writetable(r.ComparableCountCurves,temporary,'Sheet','ComparableCountCV');end
 if ~isempty(r.ComparableCountSummary)
     writetable(r.ComparableCountSummary,temporary,'Sheet','ComparableCountSummary');writetable(r.ComparablePredictions,temporary,'Sheet','ComparablePredictions');
 end
