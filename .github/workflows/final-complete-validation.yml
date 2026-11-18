@@ -1,0 +1,30 @@
+name: Validate final complete modeling code
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - VoiceDiseaseModeling_Final_Complete.m
+      - runFinalCompleteValidation.m
+      - .github/workflows/final-complete-validation.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Check three designs, seven window probes, BA, constrained voting, near counts and resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runFinalCompleteValidation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-complete-validation
+          path: final-complete-validation/
+          retention-days: 30
