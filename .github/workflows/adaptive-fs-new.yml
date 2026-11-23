@@ -1,0 +1,119 @@
+name: New adaptive windows then cumulative feature selection
+on:
+  push:
+    paths:
+      - VoiceDiseaseModeling_AdaptiveFS.m
+      - runAdaptiveFSValidation.m
+      - runAdaptiveFSReal.m
+      - .github/workflows/adaptive-fs-new.yml
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        type: string
+        default: ''
+      attempt:
+        type: string
+        default: '1'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: adaptive-fs-new-independent
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: Verify window choice then cumulative four-ranker selection, grouped CV and resume
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runAdaptiveFSValidation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adaptive-fs-new-validation
+          path: adaptive-fs-validation/
+          retention-days: 30
+  real:
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        d: [1, 2, 3, 4, 5, 6]
+    env:
+      VOICE_DISEASE_INDEX: ${{ matrix.d }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore only this NEW adaptive-FS experiment on a continuation
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: adaptive-fs-new-d${{ matrix.d }}
+          path: adaptive-fs-real-new/disease_${{ matrix.d }}/
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
+      - uses: matlab-actions/setup-matlab@v2
+        with:
+          release: R2023b
+          products: Statistics_and_Machine_Learning_Toolbox Parallel_Computing_Toolbox
+      - name: New real adaptive and cumulative-FS experiment, two workers per disease
+        timeout-minutes: 320
+        uses: matlab-actions/run-command@v2
+        with:
+          command: runAdaptiveFSReal
+      - name: Record new experiment progress
+        if: always()
+        run: python3 ci/summarize_adaptive_fs.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adaptive-fs-new-d${{ matrix.d }}
+          path: adaptive-fs-real-new/disease_${{ matrix.d }}/
+          retention-days: 30
+          compression-level: 1
+  collect-and-continue:
+    needs: [validate, real]
+    if: always() && !cancelled() && needs.validate.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: adaptive-fs-new-d*
+          path: adaptive-fs-progress/
+      - run: python3 -m pip install openpyxl
+      - name: Collect new results without changing old experiments
+        run: python3 ci/collect_adaptive_fs.py
+      - name: Continue only if every incomplete case has resumable new checkpoints
+        uses: actions/github-script@v7
+        env:
+          ATTEMPT: ${{ inputs.attempt || '1' }}
+        with:
+          script: |
+            const fs=require('fs');
+            const report=JSON.parse(fs.readFileSync('adaptive-fs-collected/AdaptiveFS_Report.json','utf8'));
+            const attempt=Number(process.env.ATTEMPT);
+            const unfinished=report.Status.filter(s=>!s.Complete);
+            if(unfinished.length && unfinished.every(s=>s.CanResume) && attempt<4) {
+              await github.rest.actions.createWorkflowDispatch({...context.repo,workflow_id:'adaptive-fs-new.yml',ref:context.ref,inputs:{resume_run_id:String(context.runId),attempt:String(attempt+1)}});
+              core.summary.addRaw('Continuation requested from this new experiment only.');
+            } else if(unfinished.length) core.warning('Incomplete cases remain; inspect saved status.');
+            core.summary.addRaw(`Completed new cases: ${report.CompletedDiseases}/6`);await core.summary.write();
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adaptive-fs-new-collected-results
+          path: adaptive-fs-collected/
+          retention-days: 30

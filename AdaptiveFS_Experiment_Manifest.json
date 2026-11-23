@@ -1,0 +1,26 @@
+{
+  "Experiment": "Adaptive_Window_Then_CumulativeFS_v1",
+  "Stage": "Prepared_StaticChecksPassed_RuntimePending",
+  "PreviousSourceUnchangedSHA256": "51824ea885e25062e96ab37173413fca53836f8e337f0b297425c0c14199199d",
+  "NewSourceSHA256": "f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",
+  "IndependentOutput": "ModelResults_AdaptiveFS_NEW",
+  "OldCheckpointsAllowed": false,
+  "SelectionMetric": "CV Accuracy",
+  "ReportedMetrics": [
+    "Accuracy",
+    "BalancedAccuracy",
+    "Sensitivity",
+    "Specificity",
+    "F1",
+    "TP",
+    "TN",
+    "FP",
+    "FN"
+  ],
+  "ActiveDesigns": [
+    3
+  ],
+  "SevenClassifiers": true,
+  "FourRankers": true,
+  "AdaptiveFeatureSelection": true
+}
