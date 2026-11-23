@@ -1,14 +1,16 @@
 {
   "OriginalSHA256": "f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",
-  "RepairedSHA256": "824ed8f799b428e906aa127f5445893a4302f265be9f40b879117edfc0f1b0ce",
+  "RepairedSHA256": "c66488f181d1e4ed5cc3fb9357ed411810d0344025e14d93060da626b1667248",
   "ChangedFunctions": [
     "VoiceDiseaseModeling_AdaptiveFS",
     "branchBudget",
+    "searchCV",
     "selectVote",
     "selftest"
   ],
-  "UnchangedFunctionCount": 78,
+  "UnchangedFunctionCount": 77,
   "SignatureRoutingUnchanged": true,
-  "PrimaryTrainingSelectionFunctionsUnchanged": true,
-  "OriginalArtifactRun": 45107990079
+  "CVScoreComputationUnchanged": true,
+  "RefitEligibilityUsesTrainingOnly": true,
+  "OriginalArtifactRun": 45185434554
 }

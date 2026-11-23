@@ -21,6 +21,10 @@ for j=1:5
  sc=r.Searches{j};assert(numel(unique(sc.Candidates.Classifier))==7);
  assert(numel(unique(sc.Candidates.Ranker))==4&&all(sc.Candidates.K>=1));
  assert(any(sc.Candidates.Valid)&&~any(sc.Candidates.Ranker=="None"));
+ if j>=3
+  t=sc.Candidates;assert(all(t.Valid==(t.CVValid&t.RefitFeasible)));
+  assert(sc.Best.K<=sc.Best.RefitCapacity&&sc.Best.RefitFeasible);
+ end
 end
 cohort=r.Cohort;assert(~any(cohort.Test&cohort.Train)&&all(cohort.Fold(cohort.Test)==0));
 models=dir(fullfile(files.folder,'Model_*.mat'));

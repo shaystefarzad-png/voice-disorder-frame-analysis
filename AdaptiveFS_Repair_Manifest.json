@@ -1,13 +1,16 @@
 {
-  "Repair": "Training-only nearest feasible supplementary count; primary candidate selection unchanged",
+  "Repair": "Exclude unfittable K before choosing an existing training-CV candidate; never clip K or reuse its mismatched score",
   "OriginalAdaptiveFS_SHA256": "f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",
-  "RepairedAdaptiveFS_SHA256": "824ed8f799b428e906aa127f5445893a4302f265be9f40b879117edfc0f1b0ce",
-  "ResumeArtifactRun": 45107990079,
+  "RepairedAdaptiveFS_SHA256": "c66488f181d1e4ed5cc3fb9357ed411810d0344025e14d93060da626b1667248",
+  "ResumeArtifactRun": 45185434554,
   "PreviousD1D2D3ExperimentsAllowed": false,
   "Scope": [
     "branchBudget feasibility",
     "supplementary budget-deviation reporting",
     "explicit SHA-admitted same-experiment resume",
-    "targeted regression selftests"
-  ]
+    "targeted regression selftests",
+    "Training-only adaptive full-refit capacity eligibility",
+    "Reuse identical fold scores and window caches; recompute selections only"
+  ],
+  "PreviousRepairSHA256": "824ed8f799b428e906aa127f5445893a4302f265be9f40b879117edfc0f1b0ce"
 }

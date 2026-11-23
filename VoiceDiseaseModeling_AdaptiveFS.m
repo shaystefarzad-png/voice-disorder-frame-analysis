@@ -56,7 +56,7 @@ end
 % Retain the scientific signature (and all inner Fold seeds/cache keys) only
 % under an explicitly SHA-admitted, tested numerical repair.
 repair=struct('CurrentSourceSHA',string(source),'ScientificIdentitySourceSHA',identitySource, ...
-    'ExistingSignature',signature,'Scope',"Near-count supplementary branch feasibility only; primary selection, splits, scores and window caches preserved");
+    'ExistingSignature',signature,'Scope',"Training-only refit eligibility and near-count feasibility; saved CV scores, splits and window caches preserved");
 repairFile=fullfile(cfg.OutputDir,'Numerical_Repair_Provenance.mat');
 if ~isfile(repairFile),atomicSave(repairFile,'repair',repair);
 else,prior=load(repairFile,'repair');if ~isequal(prior.repair,repair),atomicSave(repairFile,'repair',repair);end;end
@@ -322,9 +322,27 @@ if ~isempty(failures)
     error('Voice:Candidate','A required candidate failed: %s',strjoin(unique(failures.Error)," | "));
 end
 assert(any(candidates.Valid),'No candidate is available in every fold; adaptive branch may be empty.');
+% Inner-fold maps can allocate different counts to the two windows. A K that
+% exists in every inner fold may still exceed the enclosing FIT-only map.
+% Filter eligibility with that training-only map, then select an existing
+% scored candidate. Never truncate K while retaining the old CV score.
+if d.AdaptiveMode~="fixed"
+    [fitIDs,~]=calibrationSplit(subjects,d.Y,cfg);
+    [refitColumns,~]=inputMapping(d,fitIDs,cfg);
+    candidates=refitCandidates(candidates,numel(refitColumns));
+end
 best=bestRow(candidates,cfg);search=struct('Best',best,'Candidates',candidates,'Failures',failures, ...
     'FoldRankings',rankings,'FoldValues',values,'Subjects',subjects,'Fold',fold,'Seed',seed,'Cache',string(cache));
 atomicTable(candidates,fullfile(cache,'CV_Candidates.xlsx'),'Candidates');
+end
+
+function t=refitCandidates(t,capacity)
+assert(isscalar(capacity)&&capacity>=0&&capacity==fix(capacity));
+t.CVValid=t.Valid;
+t.RefitCapacity=repmat(capacity,height(t),1);
+t.RefitFeasible=capacity>0 & (t.K==0 | t.K<=capacity);
+t.Valid=t.CVValid&t.RefitFeasible;
+assert(any(t.Valid),'No scored candidate can be fitted with the current training-only adaptive window map.');
 end
 
 function t=candidateTable(cfg,p,useFS)
@@ -935,6 +953,16 @@ for j=1:numel(order),previous=max(previous,(planned-j+1)*value(j));adjusted(ids(
 end
 
 function selftest(cfg)
+% Regression: the best CV K=3 cannot fit a branch with two selected columns.
+fixture=table([1;2;3],[true;true;true],[.7;.8;.99],[.05;.04;.01],[.7;.8;.99], ...
+    'VariableNames',{'K','Valid','MeanAccuracy','StdAccuracy','Sensitivity'});
+filtered=refitCandidates(fixture,2);winner=bestRow(filtered,cfg);
+assert(winner.K==2&&winner.MeanAccuracy==.8&&~filtered.Valid(3)&&all(filtered.CVValid));
+assert(isequal(filtered.MeanAccuracy,fixture.MeanAccuracy),'Repair must preserve previously computed scores.');
+unchanged=refitCandidates(fixture,3);winner=bestRow(unchanged,cfg);assert(winner.K==3);
+fixture.Valid(2)=false;filtered=refitCandidates(fixture,2);winner=bestRow(filtered,cfg);assert(winner.K==1);
+failed=false;try,refitCandidates(fixture,0);catch,failed=true;end;assert(failed);
+fprintf('ADAPTIVE_REFIT_CAPACITY_REGRESSION_PASSED\n');
 left=table([1;2],[true;true],[.8;.9],[.05;.04],[.8;.9], ...
     'VariableNames',{'K','Valid','MeanAccuracy','StdAccuracy','Sensitivity'});
 right=left;tc=struct('Candidates',left);fc=struct('Candidates',right);
