@@ -1,0 +1,13 @@
+{
+  "Repair": "Training-only nearest feasible supplementary count; primary candidate selection unchanged",
+  "OriginalAdaptiveFS_SHA256": "f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",
+  "RepairedAdaptiveFS_SHA256": "824ed8f799b428e906aa127f5445893a4302f265be9f40b879117edfc0f1b0ce",
+  "ResumeArtifactRun": 45107990079,
+  "PreviousD1D2D3ExperimentsAllowed": false,
+  "Scope": [
+    "branchBudget feasibility",
+    "supplementary budget-deviation reporting",
+    "explicit SHA-admitted same-experiment resume",
+    "targeted regression selftests"
+  ]
+}

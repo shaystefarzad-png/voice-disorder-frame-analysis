@@ -15,7 +15,7 @@ if cfg.Stage=="quadratic_check",quadraticRepairChecks(cfg);return;end
 if cfg.Stage=="quadratic_real_check",quadraticRealChecks(cfg);return;end
 assert(ismember(cfg.Stage,["training","all","resume_check"]),'Invalid Stage.');
 assert(isequal(cfg.ActiveDesigns,3)&&cfg.AdaptiveFeatureSelection,'This separate experiment requires adaptive windows followed by feature selection.');
-assert(strlength(cfg.WarmStartRoot)==0&&strlength(cfg.ResumeSourceSHA)==0,'Previous experiments cannot supply checkpoints or scores.');
+assert(strlength(cfg.WarmStartRoot)==0,'Previous experiments cannot supply checkpoints or scores.');
 assert(license('test','Statistics_Toolbox'),'Statistics and Machine Learning Toolbox required.');
 assert(all(cfg.VotingAlphas>0&cfg.VotingAlphas<1),'Voting weights must be interior.');
 assert(cfg.ComparableCountTolerance>=0);
@@ -40,7 +40,7 @@ for disease=cfg.Diseases,allFiles=[allFiles,featurePath(cfg,25,disease),featureP
 identitySource=source;
 if strlength(cfg.ResumeSourceSHA)>0
     assert(source==string(cfg.ResumeExecutionSHA),'Repair execution source does not match the admitted SHA.');
-    assert(string(cfg.ResumeSourceSHA)=="9500988d523447c198ffd4ee69e983b0404888b97a06424375ea1853eac5e184",'Unrecognized source migration.');
+    assert(string(cfg.ResumeSourceSHA)=="f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",'Unrecognized source migration.');
     identitySource=string(cfg.ResumeSourceSHA);
 end
 manifest=string(jsonencode(routed))+identitySource;
@@ -56,7 +56,7 @@ end
 % Retain the scientific signature (and all inner Fold seeds/cache keys) only
 % under an explicitly SHA-admitted, tested numerical repair.
 repair=struct('CurrentSourceSHA',string(source),'ScientificIdentitySourceSHA',identitySource, ...
-    'ExistingSignature',signature,'Scope',"Failed quadratic fits only; converged models and selection unchanged");
+    'ExistingSignature',signature,'Scope',"Near-count supplementary branch feasibility only; primary selection, splits, scores and window caches preserved");
 repairFile=fullfile(cfg.OutputDir,'Numerical_Repair_Provenance.mat');
 if ~isfile(repairFile),atomicSave(repairFile,'repair',repair);
 else,prior=load(repairFile,'repair');if ~isequal(prior.repair,repair),atomicSave(repairFile,'repair',repair);end;end
@@ -613,11 +613,21 @@ function best=bestAtCount(search,count,cfg)
 t=search.Candidates;mask=t.K==count&t.Valid;assert(any(mask),'No valid candidate at k=%d.',count);best=bestRow(t(mask,:),cfg);
 end
 
-function [a,b]=branchBudget(time,freq,count,cfg)
+function [a,b,diagnostic]=branchBudget(time,freq,count,cfg)
+% Approximate count is supplementary. If its requested neighbourhood is empty,
+% choose the closest feasible sum using TRAINING candidate availability only.
+ktValid=unique(time.Candidates.K(time.Candidates.Valid&time.Candidates.K>=1));
+kfValid=unique(freq.Candidates.K(freq.Candidates.Valid&freq.Candidates.K>=1));
+assert(~isempty(ktValid)&&~isempty(kfValid),'No valid positive-count candidate in a voting branch.');
+distances=abs(ktValid(:)+kfValid(:)'-count);minimum=min(distances(:));
+effectiveTolerance=max(cfg.ComparableCountTolerance,minimum);
+diagnostic=struct('RequestedBudget',count,'RequestedTolerance',cfg.ComparableCountTolerance, ...
+    'AppliedTolerance',effectiveTolerance,'MinimumFeasibleDistance',minimum, ...
+    'ToleranceRelaxed',effectiveTolerance>cfg.ComparableCountTolerance);
 found=false;
 for kt=unique(time.Candidates.K)'
     for kf=unique(freq.Candidates.K)'
-        if kt<1||kf<1||abs(kt+kf-count)>cfg.ComparableCountTolerance|| ...
+        if kt<1||kf<1||abs(kt+kf-count)>effectiveTolerance|| ...
                 ~any(freq.Candidates.K==kf&freq.Candidates.Valid)||~any(time.Candidates.K==kt&time.Candidates.Valid),continue;end
         left=bestAtCount(time,kt,cfg);right=bestAtCount(freq,kf,cfg);
         value=struct('MeanAccuracy',(left.MeanAccuracy+right.MeanAccuracy)/2,'StdAccuracy',(left.StdAccuracy+right.StdAccuracy)/2, ...
@@ -625,7 +635,8 @@ for kt=unique(time.Candidates.K)'
         if ~found||isBetter(value,winner,cfg),a=left;b=right;winner=value;found=true;end
     end
 end
-assert(found,'No admissible near-count pair of branch feature counts.');
+assert(found,'No valid positive-count voting pair.');
+diagnostic.SelectedTotal=a.K+b.K;diagnostic.ActualDistance=abs(a.K+b.K-count);
 end
 
 function [count,choices,curve]=chooseBudget(searches,cfg)
@@ -673,14 +684,24 @@ for k=1:kfold
         atomicSave(file,'part',part);
     end
     allValues(k,:)=part.Values;oof(fold==k)=part.Probability;hardOOF(fold==k)=part.Prediction;
+    requested=NaN;deviation=NaN;relaxed=false;
+    if isfinite(featureBudget)
+        requested=featureBudget;deviation=abs(part.TimeCount+part.FrequencyCount-featureBudget);
+        relaxed=deviation>cfg.ComparableCountTolerance;
+    end
     outer=[outer;table(k,part.TimeChoice.Classifier,part.TimeChoice.Ranker,part.TimeCount, ...
         part.FrequencyChoice.Classifier,part.FrequencyChoice.Ranker,part.FrequencyCount, ...
-        part.Choice.Method,part.Choice.Alpha,'VariableNames',{'Fold','TimeClassifier','TimeRanker','TimeFeatures', ...
-        'FrequencyClassifier','FrequencyRanker','FrequencyFeatures','Method','TimeWeight'})]; %#ok<AGROW>
+        part.Choice.Method,part.Choice.Alpha,requested,deviation,relaxed,'VariableNames',{'Fold','TimeClassifier','TimeRanker','TimeFeatures', ...
+        'FrequencyClassifier','FrequencyRanker','FrequencyFeatures','Method','TimeWeight','RequestedBudget','BudgetDeviation','BudgetToleranceRelaxed'})]; %#ok<AGROW>
 end
-a=timeSearch.Best;b=freqSearch.Best;if isfinite(featureBudget),[a,b]=branchBudget(timeSearch,freqSearch,featureBudget,cfg);end
+a=timeSearch.Best;b=freqSearch.Best;budgetDiagnostic=struct();
+if isfinite(featureBudget),[a,b,budgetDiagnostic]=branchBudget(timeSearch,freqSearch,featureBudget,cfg);end
 pt=chosenOOF(time,timeSearch,a,cfg);pf=chosenOOF(freq,freqSearch,b,cfg);
 finalChoice=chooseVote(pt,pf,time.Y(ids),fold,a,b,cfg);
+if isfinite(featureBudget)
+    finalChoice.RequestedBudget=featureBudget;finalChoice.BudgetDeviation=budgetDiagnostic.ActualDistance;
+    finalChoice.BudgetToleranceRelaxed=budgetDiagnostic.ToleranceRelaxed;
+end
 fields=metricFields();best=struct('Classifier',"IndependentBranches",'Ranker',"IndependentBranches",'K',0);
 for j=1:numel(fields),best.("Mean"+fields(j))=mean(allValues(:,j));best.("Std"+fields(j))=std(allValues(:,j));end
 best.Sensitivity=best.MeanSensitivity;
@@ -914,6 +935,17 @@ for j=1:numel(order),previous=max(previous,(planned-j+1)*value(j));adjusted(ids(
 end
 
 function selftest(cfg)
+left=table([1;2],[true;true],[.8;.9],[.05;.04],[.8;.9], ...
+    'VariableNames',{'K','Valid','MeanAccuracy','StdAccuracy','Sensitivity'});
+right=left;tc=struct('Candidates',left);fc=struct('Candidates',right);
+check=cfg;check.ComparableCountTolerance=0;
+[a,b,detail]=branchBudget(tc,fc,20,check);
+assert(a.K==2&&b.K==2&&detail.ToleranceRelaxed&&detail.ActualDistance==16);
+[a,b,detail]=branchBudget(tc,fc,3,check);
+assert(a.K+b.K==3&&~detail.ToleranceRelaxed&&detail.ActualDistance==0);
+invalid=left;invalid.Valid(:)=false;bad=struct('Candidates',invalid);failed=false;
+try,branchBudget(bad,fc,3,check);catch,failed=true;end;assert(failed);
+fprintf('NEAR_COUNT_FEASIBILITY_REPAIR_TESTS_PASSED\n');
 m=metrics([0;0;1;1],[0;1;1;1]);assert(m.Accuracy==.75&&m.BalancedAccuracy==.75&&m.TP==2&&m.TN==1&&m.FP==1&&m.FN==0);
 pt=[.9;.2;.4;.8;.6;.1];pf=[.1;.8;.7;.6;.9;.3];agree=(pt>=.5)==(pf>=.5);
 for prefer=[true,false]

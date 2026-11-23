@@ -1,0 +1,14 @@
+{
+  "OriginalSHA256": "f659bafb22270c585174a002e7e1567d8d05aa0f3a55e0e9e32e99d73b96dd75",
+  "RepairedSHA256": "824ed8f799b428e906aa127f5445893a4302f265be9f40b879117edfc0f1b0ce",
+  "ChangedFunctions": [
+    "VoiceDiseaseModeling_AdaptiveFS",
+    "branchBudget",
+    "selectVote",
+    "selftest"
+  ],
+  "UnchangedFunctionCount": 78,
+  "SignatureRoutingUnchanged": true,
+  "PrimaryTrainingSelectionFunctionsUnchanged": true,
+  "OriginalArtifactRun": 45107990079
+}
